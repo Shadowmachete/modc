@@ -1,14 +1,19 @@
 CC := gcc
-CFLAGS := -g -Wall -Werror -Wextra -pedantic
+CFLAGS := -g -Wall -Werror -Wextra -pedantic -Iinclude
+LDFLAGS :=
+LIBS :=
+INCLUDE_DIR := include
+SRC_DIR := src
+BUILD_DIR := build
 
 # headers
-HDRS := utils.h lexer/lexer.h parser/parser.h symtab/symtab.h
+HDRS := $(shell find $(INCLUDE_DIR) -name '*.h')
 
 # source files
-SRCS := main.c utils.c lexer/lexer.c parser/parser.c symtab/symtab.c
+SRCS := $(shell find $(SRC_DIR) -name '*.c')
 
 # object files
-OBJS := $(SRCS:.c=.o)
+OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 # executable
 EXEC := main
@@ -16,7 +21,11 @@ EXEC := main
 all: $(EXEC)
 
 $(EXEC): $(OBJS) $(HDRS) Makefile
-	$(CC) -o $@ $(OBJS) $(CFLAGS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(EXEC) $(OBJS)

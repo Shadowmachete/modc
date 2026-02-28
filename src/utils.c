@@ -12,7 +12,7 @@
 void error(size_t line, const char *fmt, ...) {
   va_list ap;
 
-  fprintf(stderr, "custom compiler: error: line %zu: ", line);
+  fprintf(stderr, "modcc: error: line %zu: ", line);
 
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -52,6 +52,8 @@ char *readin(char *file) {
 
   return raw;
 }
+
+// TODO: move murmur and hash table to libc-extensions library
 
 static inline uint32_t murmur_32_scramble(uint32_t k) {
   k *= 0xcc9e2d51;

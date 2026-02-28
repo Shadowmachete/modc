@@ -1,9 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "lexer/lexer.h"
-#include "parser/parser.h"
-#include "symtab/symtab.h"
+#include "lexer.h"
+#include "parser.h"
 #include "utils.h"
 
 int main(int argc, char *argv[]) {
@@ -18,11 +17,9 @@ int main(int argc, char *argv[]) {
 
   Lexer lexer;
 
-  Parser *parser = parser_create(&lexer);
+  Parser *parser = parserCreate(&lexer);
 
   parse(parser, source);
-
-  symtab_print(parser->symtab);
 
   free(source);
 }

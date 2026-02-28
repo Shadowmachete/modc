@@ -4,16 +4,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../utils.h"
 #include "lexer.h"
+#include "utils.h"
 
-void lex_init(Lexer *l, const char *src) {
+// TODO: consider if we want to change lexer to using an arena for tokens
+// and for its own allocation
+
+void lexInit(Lexer *l, const char *src) {
   l->pos = 0;
   l->line = 1;
   l->src = src;
 }
 
-Token lex_next(Lexer *l) {
+Token lexNext(Lexer *l) {
   if (l->has_peeked) {
     l->has_peeked = false;
     return l->peeked;
@@ -35,10 +38,10 @@ again:
     return (Token){start, 0, l->line, TOKEN_EOF};
 
   if (isdigit((unsigned char)*c))
-    return lex_number(l, c, start);
+    return lexNumber(l, c, start);
 
   if (isalpha((unsigned char)*c) || *c == '_')
-    return lex_ident(l, c, start);
+    return lexIdent(l, c, start);
 
   Token tok;
 
@@ -46,7 +49,7 @@ again:
   case '=':
     if (*(c + 1) == '=') {
       c++;
-      tok.type = TOKEN_EQUALS;
+      tok.type = TOKEN_EQ;
     } else {
       tok.type = TOKEN_ASSIGN;
     }
@@ -54,7 +57,7 @@ again:
   case '+':
     if (*(c + 1) == '=') {
       c++;
-      tok.type = TOKEN_PLUS_EQUALS;
+      tok.type = TOKEN_PLUS_ASSIGN;
     } else if (*(c + 1) == '+') {
       c++;
       tok.type = TOKEN_PLUS_PLUS;
@@ -65,7 +68,7 @@ again:
   case '-':
     if (*(c + 1) == '=') {
       c++;
-      tok.type = TOKEN_MINUS_EQUALS;
+      tok.type = TOKEN_MINUS_ASSIGN;
     } else if (*(c + 1) == '-') {
       c++;
       tok.type = TOKEN_MINUS_MINUS;
@@ -76,18 +79,18 @@ again:
   case '*':
     if (*(c + 1) == '=') {
       c++;
-      tok.type = TOKEN_TIMES_EQUALS;
+      tok.type = TOKEN_ASTERISK_ASSIGN;
     } else {
-      tok.type = TOKEN_ASTERIX;
+      tok.type = TOKEN_ASTERISK;
     }
     break;
   case '/':
     if (*(c + 1) == '/') {
-      lex_comment(l, c); // only '//' comments
+      lexComment(l, c); // only '//' comments for now
       goto again;
     } else if (*(c + 1) == '=') {
       c++;
-      tok.type = TOKEN_DIVIDE_EQUALS;
+      tok.type = TOKEN_SLASH_ASSIGN;
     } else {
       tok.type = TOKEN_SLASH;
     }
@@ -113,61 +116,74 @@ again:
   case '}':
     tok.type = TOKEN_RCURLY;
     break;
+  case '[':
+    tok.type = TOKEN_LSQUARE;
+    break;
+  case ']':
+    tok.type = TOKEN_RSQUARE;
+    break;
+  case '~':
+    tok.type = TOKEN_TILDE;
+    break;
   case '<':
-    if (*(c + 1) == '=') {
+    if (*(c + 1) == '<') {
       c++;
-      tok.type = TOKEN_LESS_EQUALS;
-    } else if (*(c + 1) == '<') {
-      c++;
-      tok.type = TOKEN_SHL;
+      if (*(c + 1) == '=') {
+        c++;
+        tok.type = TOKEN_LESS_LESS_ASSIGN;
+      } else {
+        tok.type = TOKEN_LESS_LESS;
+      }
     } else {
-      tok.type = TOKEN_LESS;
+      if (*(c + 1) == '=') {
+        c++;
+        tok.type = TOKEN_LESS_ASSIGN;
+      } else {
+        tok.type = TOKEN_LESS;
+      }
     }
     break;
   case '>':
-    if (*(c + 1) == '=') {
+    if (*(c + 1) == '>') {
       c++;
-      tok.type = TOKEN_GREATER_EQUALS;
-    } else if (*(c + 1) == '>') {
-      c++;
-      tok.type = TOKEN_SHR;
+      if (*(c + 1) == '=') {
+        c++;
+        tok.type = TOKEN_GREATER_GREATER_ASSIGN;
+      } else {
+        tok.type = TOKEN_GREATER_GREATER;
+      }
     } else {
-      tok.type = TOKEN_GREATER;
+      if (*(c + 1) == '=') {
+        c++;
+        tok.type = TOKEN_GREATER_ASSIGN;
+      } else {
+        tok.type = TOKEN_GREATER;
+      }
     }
     break;
   case '&':
     if (*(c + 1) == '&') {
       c++;
-      if (*(c + 1) == '=') {
-        c++;
-        tok.type = TOKEN_LOGICAL_AND_EQUALS;
-      } else {
-        tok.type = TOKEN_LOGICAL_AND;
-      }
+      tok.type = TOKEN_AND_AND;
     } else {
       if (*(c + 1) == '=') {
         c++;
-        tok.type = TOKEN_BITWISE_AND_EQUALS;
+        tok.type = TOKEN_AND_ASSIGN;
       } else {
-        tok.type = TOKEN_BITWISE_AND;
+        tok.type = TOKEN_AND;
       }
     }
     break;
   case '|':
     if (*(c + 1) == '|') {
       c++;
-      if (*(c + 1) == '=') {
-        c++;
-        tok.type = TOKEN_LOGICAL_OR_EQUALS;
-      } else {
-        tok.type = TOKEN_LOGICAL_OR;
-      }
+      tok.type = TOKEN_OR_OR;
     } else {
       if (*(c + 1) == '=') {
         c++;
-        tok.type = TOKEN_BITWISE_OR_EQUALS;
+        tok.type = TOKEN_OR_ASSIGN;
       } else {
-        tok.type = TOKEN_BITWISE_OR;
+        tok.type = TOKEN_OR;
       }
     }
     break;
@@ -196,15 +212,15 @@ again:
   return tok;
 }
 
-Token lex_peek(Lexer *l) {
+Token lexPeek(Lexer *l) {
   if (!l->has_peeked) {
-    l->peeked = lex_next(l);
+    l->peeked = lexNext(l);
     l->has_peeked = true;
   }
   return l->peeked;
 }
 
-Token lex_number(Lexer *l, char *c, const char *start) {
+Token lexNumber(Lexer *l, char *c, const char *start) {
   bool is_float = false;
 
   while (isdigit(*c) || *c == '.') {
@@ -225,14 +241,14 @@ Token lex_number(Lexer *l, char *c, const char *start) {
   return (Token){start, len, l->line, TOKEN_NUMBER};
 }
 
-void lex_comment(Lexer *l, char *c) {
+void lexComment(Lexer *l, char *c) {
   c += 2;
   while (*c && *c != '\n')
     c++;
   l->pos = c - l->src;
 }
 
-Token lex_ident(Lexer *l, char *c, const char *start) {
+Token lexIdent(Lexer *l, char *c, const char *start) {
   while (isalnum(*c) || *c == '_')
     ++c;
 
@@ -307,7 +323,7 @@ Token lex_ident(Lexer *l, char *c, const char *start) {
   return tok;
 }
 
-const char *token_type_name(TokenType t) {
+const char *tokenTypeToString(TokenType t) {
   switch (t) {
   case T_CHAR8:
     return "CHAR8";
@@ -351,68 +367,98 @@ const char *token_type_name(TokenType t) {
   case T_VOID:
     return "VOID";
 
-  case TOKEN_EQUALS:
-    return "EQUALS";
+  case TOKEN_EQ:
+    return "==";
   case TOKEN_ASSIGN:
-    return "ASSIGN";
+    return "=";
+
   case TOKEN_PLUS:
-    return "PLUS";
+    return "+";
   case TOKEN_PLUS_PLUS:
-    return "INCREMENT";
-  case TOKEN_PLUS_EQUALS:
-    return "PLUS EQUALS";
+    return "++";
+  case TOKEN_PLUS_ASSIGN:
+    return "+=";
+
   case TOKEN_MINUS:
-    return "MINUS";
+    return "-";
   case TOKEN_MINUS_MINUS:
-    return "DECREMENT";
-  case TOKEN_MINUS_EQUALS:
-    return "MINUS EQUALS";
-  case TOKEN_ASTERIX:
-    return "ASTERIX";
-  case TOKEN_TIMES_EQUALS:
-    return "TIMES EQUALS";
+    return "--";
+  case TOKEN_MINUS_ASSIGN:
+    return "-=";
+
+  case TOKEN_ASTERISK:
+    return "*";
+  case TOKEN_ASTERISK_ASSIGN:
+    return "*=";
+
   case TOKEN_SLASH:
-    return "SLASH";
-  case TOKEN_DIVIDE_EQUALS:
-    return "DIVIDE EQUALS";
+    return "/";
+  case TOKEN_SLASH_ASSIGN:
+    return "/=";
+
+  case TOKEN_MOD:
+    return "%";
+  case TOKEN_MOD_ASSIGN:
+    return "%=";
+
+  case TOKEN_XOR:
+    return "^";
+  case TOKEN_XOR_ASSIGN:
+    return "^=";
+
   case TOKEN_COLON:
-    return "COLON";
+    return ":";
   case TOKEN_SEMICOLON:
-    return "SEMICOLON";
+    return ";";
   case TOKEN_COMMA:
-    return "COMMA";
+    return ",";
+  case TOKEN_LPAREN:
+    return "(";
+  case TOKEN_RPAREN:
+    return ")";
+  case TOKEN_LCURLY:
+    return "{";
+  case TOKEN_RCURLY:
+    return "}";
+  case TOKEN_LSQUARE:
+    return "[";
+  case TOKEN_RSQUARE:
+    return "]";
+
   case TOKEN_LESS:
-    return "LESS THAN";
-  case TOKEN_SHL:
-    return "LEFT SHIFT";
-  case TOKEN_LESS_EQUALS:
-    return "LESS EQUALS";
+    return "<";
+  case TOKEN_LESS_LESS:
+    return "<<";
+  case TOKEN_LESS_ASSIGN:
+    return "<=";
+
   case TOKEN_GREATER:
-    return "GREATER THAN";
-  case TOKEN_SHR:
-    return "RIGHT SHIFT";
-  case TOKEN_GREATER_EQUALS:
-    return "GREATER EQUALS";
-  case TOKEN_BITWISE_AND:
-    return "BITWISE AND";
-  case TOKEN_LOGICAL_AND:
-    return "LOGICAL AND";
-  case TOKEN_BITWISE_AND_EQUALS:
-    return "BITWISE AND EQUALS";
-  case TOKEN_LOGICAL_AND_EQUALS:
-    return "LOGICAL AND EQUALS";
-  case TOKEN_BITWISE_OR:
-    return "BITWISE OR";
-  case TOKEN_LOGICAL_OR:
-    return "LOGICAL OR";
-  case TOKEN_BITWISE_OR_EQUALS:
-    return "BITWISE OR EQUALS";
-  case TOKEN_LOGICAL_OR_EQUALS:
-    return "LOGICAL OR EQUALS";
+    return ">";
+  case TOKEN_GREATER_GREATER:
+    return ">>";
+  case TOKEN_GREATER_ASSIGN:
+    return ">=";
+
+  case TOKEN_AND:
+    return "&";
+  case TOKEN_AND_AND:
+    return "&&";
+  case TOKEN_AND_ASSIGN:
+    return "&=";
+
+  case TOKEN_OR:
+    return "|";
+  case TOKEN_OR_OR:
+    return "||";
+  case TOKEN_OR_ASSIGN:
+    return "|=";
+
   case TOKEN_NOT:
-    return "NOT";
+    return "!";
+  case TOKEN_TILDE:
+    return "~";
   case TOKEN_NOT_EQUALS:
-    return "NOT EQUALS";
+    return "!=";
 
   case KW_IF:
     return "IF";
@@ -430,14 +476,6 @@ const char *token_type_name(TokenType t) {
     return "GOTO";
   case KW_RETURN:
     return "RETURN";
-  case TOKEN_LPAREN:
-    return "LPAREN";
-  case TOKEN_RPAREN:
-    return "RPAREN";
-  case TOKEN_LCURLY:
-    return "LCURLY";
-  case TOKEN_RCURLY:
-    return "RCURLY";
 
   case TOKEN_IDENTIFIER:
     return "IDENTIFIER";
@@ -456,7 +494,7 @@ const char *token_type_name(TokenType t) {
   }
 }
 
-void token_print(Token t) {
+void tokenPrint(Token t) {
   printf("Token: [line %zu] %-10s '%.*s' %zu\n", t.line,
-         token_type_name(t.type), (int)t.length, t.start, t.length);
+         tokenTypeToString(t.type), (int)t.length, t.start, t.length);
 }
