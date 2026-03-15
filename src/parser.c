@@ -6,7 +6,7 @@
 
 // TODO: change to arena
 
-Parser *parserCreate(Lexer *l) {
+Parser *parser_create(Lexer *l) {
   Parser *parser = malloc(sizeof(Parser));
 
   if (!parser)
@@ -18,24 +18,24 @@ Parser *parserCreate(Lexer *l) {
   return parser;
 }
 
-void parserFree(Parser *parser) { free(parser); }
+void parser_free(Parser *parser) { free(parser); }
 
 void parse(Parser *parser, const char *source) {
-  lexInit(parser->lexer, source);
+  lex_init(parser->lexer, source);
 
   parser->pass_no++;
 
   while (1) {
-    Token t = lexNext(parser->lexer);
-    parseToken(parser, t);
+    Token t = lex_next(parser->lexer);
+    parse_token(parser, t);
 
     if (t.type == TOKEN_EOF)
       break;
   }
 }
 
-void parseToken(Parser *parser, Token t) {
-  Token next_tok = lexPeek(parser->lexer);
+void parse_token(Parser *parser, Token t) {
+  Token next_tok = lex_peek(parser->lexer);
 
   // TODO: process each token and produce the AST
 
@@ -67,5 +67,6 @@ void parseToken(Parser *parser, Token t) {
     break;
   }
 
-  tokenPrint(next_tok);
+  token_print(t);
+  (void)next_tok;
 }

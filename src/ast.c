@@ -2,10 +2,10 @@
 #include <string.h>
 
 #include "ast.h"
-#include "types.h"
+#include "modc_types.h"
 #include "utils.h"
 
-Ast *astCreate(void) {
+Ast *ast_create(void) {
   // TODO: replace with arena
   Ast *ast = malloc(sizeof(Ast));
 
@@ -17,10 +17,10 @@ Ast *astCreate(void) {
   return ast;
 }
 
-void astFree(Ast *ast) { free(ast); }
+void ast_free(Ast *ast) { free(ast); }
 
-Ast *astInt64(int64_t val) {
-  Ast *ast = astCreate();
+Ast *ast_int64(int64_t val) {
+  Ast *ast = ast_create();
 
   ast->variant = AST_INTEGER;
   ast->type = int_64_type;
@@ -29,8 +29,8 @@ Ast *astInt64(int64_t val) {
   return ast;
 }
 
-Ast *astFloat64(double val) {
-  Ast *ast = astCreate();
+Ast *ast_float64(double val) {
+  Ast *ast = ast_create();
 
   ast->variant = AST_FLOAT;
   ast->type = float_64_type;
@@ -39,8 +39,8 @@ Ast *astFloat64(double val) {
   return ast;
 }
 
-Ast *astChar(int64_t val) {
-  Ast *ast = astCreate();
+Ast *ast_char(int64_t val) {
+  Ast *ast = ast_create();
 
   ast->variant = AST_INTEGER;
   ast->type = char_8_type;
@@ -49,8 +49,8 @@ Ast *astChar(int64_t val) {
   return ast;
 }
 
-Ast *astString(char *str, size_t len) {
-  Ast *ast = astCreate();
+Ast *ast_string(char *str, size_t len) {
+  Ast *ast = ast_create();
 
   ast->variant = AST_STRING;
   ast->string.data = strndup(str, len);

@@ -109,7 +109,7 @@ typedef enum {
   TOKEN_UNKNOWN,
 } TokenType;
 
-const char *tokenTypeToString(TokenType t);
+const char *token_type_to_string(TokenType t);
 
 typedef struct {
   // TODO: convert to a String struct
@@ -119,7 +119,7 @@ typedef struct {
   TokenType type;
 } Token;
 
-void tokenPrint(Token t);
+void token_print(Token t);
 
 typedef struct {
   const char *src;
@@ -130,11 +130,11 @@ typedef struct {
   bool has_peeked;
 } Lexer;
 
-void lexInit(Lexer *l, const char *src);
-Token lexNext(Lexer *l);
-Token lexPeek(Lexer *l);
-Token lexNumber(Lexer *l, char *c, const char *start);
-void lexComment(Lexer *l, char *c);
-Token lexIdent(Lexer *l, char *c, const char *start);
+void lex_init(Lexer *l, const char *src);
+Token lex_next(Lexer *l);
+Token lex_peek(Lexer *l);
+Token lex_number(Lexer *l, char *c, const char *start);
+void lex_comment(Lexer *l, char *c);
+Token lex_ident(Lexer *l, char *c, const char *start);
 
 #endif // !LEXER_H

@@ -14,10 +14,10 @@ typedef struct {
   int pass_no;
 } Parser;
 
-Parser *parserCreate(Lexer *l);
-void parserFree(Parser *parser);
+Parser *parser_create(Lexer *l);
+void parser_free(Parser *parser);
 
 void parse(Parser *parser, const char *source);
-void parseToken(Parser *parser, Token t);
+void parse_token(Parser *parser, Token t);
 
 #endif // !PARSER_H

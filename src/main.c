@@ -17,9 +17,11 @@ int main(int argc, char *argv[]) {
 
   Lexer lexer;
 
-  Parser *parser = parserCreate(&lexer);
+  Parser *parser = parser_create(&lexer);
 
   parse(parser, source);
 
   free(source);
+
+  parser_free(parser);
 }

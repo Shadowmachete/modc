@@ -10,13 +10,14 @@
 // TODO: consider if we want to change lexer to using an arena for tokens
 // and for its own allocation
 
-void lexInit(Lexer *l, const char *src) {
+void lex_init(Lexer *l, const char *src) {
   l->pos = 0;
   l->line = 1;
   l->src = src;
+  l->has_peeked = 0;
 }
 
-Token lexNext(Lexer *l) {
+Token lex_next(Lexer *l) {
   if (l->has_peeked) {
     l->has_peeked = false;
     return l->peeked;
@@ -38,10 +39,10 @@ again:
     return (Token){start, 0, l->line, TOKEN_EOF};
 
   if (isdigit((unsigned char)*c))
-    return lexNumber(l, c, start);
+    return lex_number(l, c, start);
 
   if (isalpha((unsigned char)*c) || *c == '_')
-    return lexIdent(l, c, start);
+    return lex_ident(l, c, start);
 
   Token tok;
 
@@ -86,7 +87,7 @@ again:
     break;
   case '/':
     if (*(c + 1) == '/') {
-      lexComment(l, c); // only '//' comments for now
+      lex_comment(l, c); // only '//' comments for now
       goto again;
     } else if (*(c + 1) == '=') {
       c++;
@@ -212,15 +213,15 @@ again:
   return tok;
 }
 
-Token lexPeek(Lexer *l) {
+Token lex_peek(Lexer *l) {
   if (!l->has_peeked) {
-    l->peeked = lexNext(l);
+    l->peeked = lex_next(l);
     l->has_peeked = true;
   }
   return l->peeked;
 }
 
-Token lexNumber(Lexer *l, char *c, const char *start) {
+Token lex_number(Lexer *l, char *c, const char *start) {
   bool is_float = false;
 
   while (isdigit(*c) || *c == '.') {
@@ -241,14 +242,14 @@ Token lexNumber(Lexer *l, char *c, const char *start) {
   return (Token){start, len, l->line, TOKEN_NUMBER};
 }
 
-void lexComment(Lexer *l, char *c) {
+void lex_comment(Lexer *l, char *c) {
   c += 2;
   while (*c && *c != '\n')
     c++;
   l->pos = c - l->src;
 }
 
-Token lexIdent(Lexer *l, char *c, const char *start) {
+Token lex_ident(Lexer *l, char *c, const char *start) {
   while (isalnum(*c) || *c == '_')
     ++c;
 
@@ -323,7 +324,7 @@ Token lexIdent(Lexer *l, char *c, const char *start) {
   return tok;
 }
 
-const char *tokenTypeToString(TokenType t) {
+const char *token_type_to_string(TokenType t) {
   switch (t) {
   case T_CHAR8:
     return "CHAR8";
@@ -494,7 +495,7 @@ const char *tokenTypeToString(TokenType t) {
   }
 }
 
-void tokenPrint(Token t) {
+void token_print(Token t) {
   printf("Token: [line %zu] %-10s '%.*s' %zu\n", t.line,
-         tokenTypeToString(t.type), (int)t.length, t.start, t.length);
+         token_type_to_string(t.type), (int)t.length, t.start, t.length);
 }

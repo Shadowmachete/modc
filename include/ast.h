@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "types.h"
+#include "modc_types.h"
 
 typedef enum {
   // postfix
@@ -27,7 +27,7 @@ typedef enum {
   AST_UNOP_DEREF,   // *p
 } AstUnOp;
 
-const char *astUnOpToString(AstUnOp op);
+const char *ast_unop_to_string(AstUnOp op);
 
 typedef enum {
   // multiplicative
@@ -76,7 +76,7 @@ typedef enum {
   AST_BIN_OP_OR_ASSIGN,  // a |= b
 } AstBinOp;
 
-const char *astBinOpToString(AstBinOp op);
+const char *ast_binop_to_string(AstBinOp op);
 
 typedef enum {
   // TODO: add more ast variants
@@ -117,7 +117,7 @@ struct Ast {
   // char * and length add support for functions and declarations and funptrs
   // and calling functions
   AstVariant variant;
-  Type *type;
+  ModCType *type;
   void *symbol;
 
   union {
@@ -157,7 +157,7 @@ struct Ast {
     // variable declaration
     struct {
       const char *name;
-      Type *decl_type;
+      ModCType *decl_type;
       Ast *initializer;
       int is_global;
     } var_decl;
@@ -165,7 +165,7 @@ struct Ast {
     // function declaration
     struct {
       const char *name;
-      Type *func_type;
+      ModCType *func_type;
       Ast **params;
       size_t param_count;
       Ast *body;
@@ -226,25 +226,25 @@ struct Ast {
   };
 };
 
-Ast *astCreate(void);
+Ast *ast_create(void);
 
 // TODO: add and implement more to make a base with returns, function calls, etc
 
 // Literals
-Ast *astInt64(int64_t val);
-Ast *astFloat64(double val);
-Ast *astChar(int64_t ch);
-Ast *astString(char *str, size_t len);
+Ast *ast_int64(int64_t val);
+Ast *ast_float64(double val);
+Ast *ast_char(int64_t ch);
+Ast *ast_string(char *str, size_t len);
 
 // Declarations
-Ast *astDecl(Ast *var, Ast *init);
+Ast *ast_decl(Ast *var, Ast *init);
 
 // Symbol operators i.e: +-*&^>
-Ast *astBinaryOp(AstBinOp operation, Ast *left, Ast *right, int *_is_err);
-Ast *astUnaryOperator(Type *type, AstUnOp operation, Ast *operand);
+Ast *ast_binary_op(AstBinOp operation, Ast *left, Ast *right, int *_is_err);
+Ast *ast_unar_op(ModCType *type, AstUnOp operation, Ast *operand);
 
 // Variable definitions
-Ast *astLVar(Type *type, char *name, int len);
-Ast *astGVar(Type *type, char *name, int len, int is_static);
+Ast *ast_l_var(ModCType *type, char *name, int len);
+Ast *ast_g_var(ModCType *type, char *name, int len, int is_static);
 
 #endif // !AST_H
