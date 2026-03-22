@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "modc_types.h"
+#include "str.h"
 
 typedef enum {
   // postfix
@@ -27,7 +28,7 @@ typedef enum {
   AST_UNOP_DEREF,   // *p
 } AstUnOp;
 
-const char *ast_unop_to_string(AstUnOp op);
+String *ast_unop_to_string(AstUnOp op);
 
 typedef enum {
   // multiplicative
@@ -76,7 +77,7 @@ typedef enum {
   AST_BIN_OP_OR_ASSIGN,  // a |= b
 } AstBinOp;
 
-const char *ast_binop_to_string(AstBinOp op);
+String *ast_binop_to_string(AstBinOp op);
 
 typedef enum {
   // TODO: add more ast variants
@@ -131,8 +132,7 @@ struct Ast {
     } fvalue;
 
     struct {
-      const char *data;
-      size_t length;
+      String *value;
     } string;
 
     // identifier

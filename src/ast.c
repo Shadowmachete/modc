@@ -1,13 +1,35 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "arena.h"
 #include "ast.h"
 #include "modc_types.h"
+#include "str.h"
 #include "utils.h"
 
+static Arena ast_arena;
+static int ast_arena_init = 0;
+
+void ast_memory_init(void) {
+  if (!ast_arena_init) {
+    arena_init(&ast_arena, sizeof(Ast) * 512);
+    ast_arena_init = 1;
+  }
+}
+
+void ast_memory_release(void) {
+  if (ast_arena_init) {
+    ast_arena_init = 0;
+    arena_clear(&ast_arena);
+  }
+}
+
+static Ast *ast_alloc(void) {
+  return (Ast *)arena_alloc(&ast_arena, sizeof(Ast));
+}
+
 Ast *ast_create(void) {
-  // TODO: replace with arena
-  Ast *ast = malloc(sizeof(Ast));
+  Ast *ast = ast_alloc();
 
   if (!ast)
     error(0, "malloc failed creating ast");
@@ -53,8 +75,7 @@ Ast *ast_string(char *str, size_t len) {
   Ast *ast = ast_create();
 
   ast->variant = AST_STRING;
-  ast->string.data = strndup(str, len);
-  ast->string.length = len;
+  ast->string.value = str_dup_raw(str, len);
 
   /* ast->type = astMakeArrayType(); */
   return ast;

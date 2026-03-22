@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "arena.h"
 #include "lexer.h"
 #include "parser.h"
 #include "utils.h"
+
+#define ARENA_CAPACITY (1024 * 64)
 
 int main(int argc, char *argv[]) {
   if (argc != 2) {
@@ -12,16 +15,16 @@ int main(int argc, char *argv[]) {
   }
 
   char *source = readin(argv[1]);
-
   printf("Source: \n%s\n", source);
 
-  Lexer lexer;
+  global_arena_init(ARENA_CAPACITY);
 
+  Lexer lexer;
   Parser *parser = parser_create(&lexer);
 
   parse(parser, source);
 
   free(source);
-
   parser_free(parser);
+  global_arena_release();
 }
