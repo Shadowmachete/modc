@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "arena.h"
+#include "ast.h"
 #include "lexer.h"
 #include "parser.h"
 #include "utils.h"
@@ -18,13 +19,15 @@ int main(int argc, char *argv[]) {
   printf("Source: \n%s\n", source);
 
   global_arena_init(ARENA_CAPACITY);
+  ast_memory_init();
 
   Lexer lexer;
   Parser *parser = parser_create(&lexer);
 
-  parse(parser, source);
+  parse(parser, source); // produce AST
 
   free(source);
   parser_free(parser);
   global_arena_release();
+  ast_memory_release();
 }

@@ -5,6 +5,8 @@
 
 #include "modc_types.h"
 #include "str.h"
+#include "types.h"
+#include "vec.h"
 
 typedef enum {
   // postfix
@@ -84,6 +86,7 @@ typedef enum {
   AST_INTEGER,
   AST_FLOAT,
   AST_STRING,
+  AST_BOOL,
   AST_IDENTIFIER,
 
   AST_UNOP,
@@ -120,11 +123,11 @@ struct Ast {
   union {
     // literals
     struct {
-      int64_t value;
+      i64 value;
     } number;
 
     struct {
-      double value;
+      f64 value;
     } fvalue;
 
     struct {
@@ -150,7 +153,7 @@ struct Ast {
     } binary;
 
     // variable declaration
-    // e.g. int x = 10;
+    // e.g. int_64 x = 10;
     struct {
       String *name; // TODO: Maybe change to String_View
       ModCType *type;
@@ -160,8 +163,14 @@ struct Ast {
     // function declaration
     struct {
       String *name; // TODO: Maybe change to String_View
-      ModCType *return_type;
-      Ast **params;
+      ModCType *func_type;
+      Ast **params; // Its okay to use this fixed size array of type Ast **
+                    // because its allocated in the Ast arena which simplifies
+                    // memory handling, as compared to a separated allocated
+                    // slice or vec. Of course I could provide vec / slice with
+                    // an allocator argument that would determine where it
+                    // decides to allocate its memory, e.g. into the arena via
+                    // the arena_alloc or just to malloc
       size_t param_count;
       Ast *body;
     } func_decl;
@@ -215,33 +224,36 @@ struct Ast {
 
     // case
     struct {
-      long long value;
+      size_t value;
       Ast *body;
     } case_stmt;
   };
 };
 
+void ast_memory_init(void);
+void ast_memory_release(void);
+
 Ast *ast_create(void);
+Ast **ast_create_array(int len);
 
 void ast_free(Ast *ast);
 
-// TODO: add and implement more to make a base with returns, function calls, etc
-
 // Literals
-Ast *ast_int64(int64_t val);
-Ast *ast_float64(double val);
-Ast *ast_char(int64_t ch);
-Ast *ast_string(char *str, size_t len);
+Ast *ast_int64(i64 val);
+Ast *ast_float64(f64 val);
+Ast *ast_bool(b8 val);
+Ast *ast_char(i64 ch);
+Ast *ast_string(const char *str, size_t len);
 
-Ast *ast_ident(char *str, size_t len);
+Ast *ast_ident(const char *str, size_t len);
 
 // Symbol operators i.e: +-*&^>
 Ast *ast_binop(AstBinOp op, Ast *left, Ast *right, int *_is_err);
 Ast *ast_unop(AstUnOp op, Ast *expr);
 
 // Declarations
-Ast *ast_vardecl(char *name, size_t len, ModCType *type, Ast *init);
-Ast *ast_funcdecl(char *name, size_t len, ModCType *type, Ast **params,
+Ast *ast_vardecl(const char *name, size_t len, ModCType *type, Ast *init);
+Ast *ast_funcdecl(const char *name, size_t len, ModCType *type, Ast **params,
                   size_t param_count, Ast *body);
 
 Ast *ast_funccall(Ast *callee, Ast **args, size_t arg_count);
@@ -253,6 +265,8 @@ Ast *ast_while(Ast *whilecond, Ast *whilebody);
 Ast *ast_return(Ast *expr);
 Ast *ast_switch(Ast *switch_expr, Ast **cases, size_t case_count,
                 Ast *default_case);
-Ast *ast_case(long long value, Ast *body);
+Ast *ast_case(size_t value, Ast *body);
+
+extern VecType vec_ast_ptr_type;
 
 #endif // !AST_H

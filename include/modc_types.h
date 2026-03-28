@@ -27,6 +27,8 @@ struct ModCType {
   size_t alignment;
   bool is_signed;
 
+  ModCType *ptr_to;
+
   union {
     TokenType builtin;
 
@@ -70,5 +72,8 @@ extern ModCType *float_32_type;
 extern ModCType *float_64_type;
 extern ModCType *bool_type;
 extern ModCType *void_type;
+
+ModCType *type_to_builtin(TokenType type);
+ModCType *make_pointer_type(ModCType *base, int ptr_depth);
 
 #endif // !TYPES_H

@@ -1,23 +1,35 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "ast.h"
 #include "lexer.h"
 
-typedef struct {
+typedef struct Parser Parser;
+
+struct Parser {
   Ast *ast;
   Lexer *lexer;
-
-  int pass_no;
-} Parser;
+};
 
 Parser *parser_create(Lexer *l);
-void parser_free(Parser *parser);
+void parser_free(Parser *p);
 
-void parse(Parser *parser, const char *source);
-void parse_token(Parser *parser, Token t);
+void parse(Parser *p, const char *src);
+Ast *parse_token(Parser *p, Token t);
+
+Ast *parse_builtin_type(Parser *p, Token tok);
+Ast *parse_ident(Parser *p, Token tok);
+Ast *parse_if(Parser *p);
+Ast *parse_while(Parser *p);
+Ast *parse_for(Parser *p);
+Ast *parse_switch(Parser *p, Token tok);
+
+Ast **parse_function_params(Parser *p, int *param_count);
+Ast **parse_function_args(Parser *p, int *arg_count);
+
+Ast *parse_block(Parser *p);
+Ast *parse_expr(Parser *p);
 
 #endif // !PARSER_H

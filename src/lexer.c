@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "lexer.h"
+#include "types.h"
 #include "utils.h"
 
 // TODO: consider if we want to change lexer to using an arena for tokens
@@ -221,8 +222,35 @@ Token lex_peek(Lexer *l) {
   return l->peeked;
 }
 
+void lex_expect(Lexer *l, TokenType tok_type) {
+  // expect the next token without advancing
+  Token next_tok = lex_peek(l);
+  if (next_tok.type == tok_type)
+    return;
+
+  error(next_tok.line, "Expected '%s' but got '%s' instead",
+        token_type_to_string(tok_type), token_type_to_string(next_tok.type));
+}
+
+void lex_expect_range(Lexer *l, TokenType start, TokenType end) {
+  // expect the next token to be in an ordered range of types
+  Token next_tok = lex_peek(l);
+  if (next_tok.type >= start && next_tok.type <= end)
+    return;
+
+  error(next_tok.line, "Expected '%s' to '%s' but got '%s' instead",
+        token_type_to_string(start), token_type_to_string(end),
+        token_type_to_string(next_tok.type));
+}
+
+void lex_expect_next(Lexer *l, TokenType tok_type) {
+  // expect the next token and consume it
+  lex_expect(l, tok_type);
+  lex_next(l);
+}
+
 Token lex_number(Lexer *l, char *c, const char *start) {
-  bool is_float = false;
+  b8 is_float = false;
 
   while (isdigit(*c) || *c == '.') {
     if (*c++ == '.') {

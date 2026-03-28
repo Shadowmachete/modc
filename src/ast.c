@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -33,11 +34,22 @@ Ast *ast_create(void) {
   Ast *ast = ast_alloc();
 
   if (!ast)
-    error(0, "malloc failed creating ast");
+    error(0, "arena alloc failed creating ast");
 
   memset(ast, 0, sizeof(Ast));
 
   return ast;
+}
+
+Ast **ast_create_array(int len) {
+  Ast **ast_array = (Ast **)arena_alloc(&ast_arena, sizeof(Ast *) * len);
+
+  if (!ast_array)
+    error(0, "arena alloc failed creating ast array");
+
+  memset(ast_array, 0, sizeof(Ast *) * len);
+
+  return ast_array;
 }
 
 void ast_free(Ast *ast) { (void)ast; }
@@ -77,6 +89,7 @@ String *ast_unop_to_string(AstUnOp op) {
   case AST_UNOP_DEREF:
     return str_dup_raw("*p", 2);
   }
+  return NULL;
 }
 
 String *ast_binop_to_string(AstBinOp op) {
@@ -140,9 +153,10 @@ String *ast_binop_to_string(AstBinOp op) {
   case AST_BIN_OP_OR_ASSIGN:
     return str_dup_raw("|=", 2);
   }
+  return NULL;
 }
 
-Ast *ast_int64(int64_t val) {
+Ast *ast_int64(i64 val) {
   Ast *ast = ast_create();
 
   ast->variant = AST_INTEGER;
@@ -152,7 +166,7 @@ Ast *ast_int64(int64_t val) {
   return ast;
 }
 
-Ast *ast_float64(double val) {
+Ast *ast_float64(f64 val) {
   Ast *ast = ast_create();
 
   ast->variant = AST_FLOAT;
@@ -162,7 +176,17 @@ Ast *ast_float64(double val) {
   return ast;
 }
 
-Ast *ast_char(int64_t val) {
+Ast *ast_bool(b8 val) {
+  Ast *ast = ast_create();
+
+  ast->variant = AST_BOOL;
+  ast->type = bool_type;
+  ast->number.value = val;
+
+  return ast;
+}
+
+Ast *ast_char(i64 val) {
   Ast *ast = ast_create();
 
   ast->variant = AST_INTEGER;
@@ -172,21 +196,19 @@ Ast *ast_char(int64_t val) {
   return ast;
 }
 
-Ast *ast_string(char *str, size_t len) {
+Ast *ast_string(const char *str, size_t len) {
   Ast *ast = ast_create();
 
   ast->variant = AST_STRING;
   ast->string.value = str_dup_raw(str, len);
 
-  /* ast->type = ast_make_array_type(); */
+  // TODO: implement make_array_type()
+
+  /* ast->type = make_array_type(char_8_type, len); */
   return ast;
 }
 
-// TODO: add functions for the rest of the tokens
-// At least for a minimal program at first (e.g. if statements, var declaration,
-// main function and return)
-
-Ast *ast_ident(char *str, size_t len) {
+Ast *ast_ident(const char *str, size_t len) {
   Ast *ast = ast_create();
 
   ast->variant = AST_IDENTIFIER;
@@ -216,7 +238,9 @@ Ast *ast_binop(AstBinOp op, Ast *left, Ast *right, int *_is_err) {
   if (op == AST_BIN_OP_EQ || op == AST_BIN_OP_NE) {
     ast->type = bool_type;
   } else {
-    /* ast->type = ast_make_combined_type(left, right) */
+    // TODO: implement make_combined_type()
+
+    /* ast->type = make_combined_type(left, right) */
     // calculate the return type of the operation
   }
 
@@ -226,7 +250,7 @@ Ast *ast_binop(AstBinOp op, Ast *left, Ast *right, int *_is_err) {
   return ast;
 }
 
-Ast *ast_vardecl(char *name, size_t len, ModCType *type, Ast *init) {
+Ast *ast_vardecl(const char *name, size_t len, ModCType *type, Ast *init) {
   Ast *ast = ast_create();
 
   ast->variant = AST_VAR;
@@ -237,14 +261,18 @@ Ast *ast_vardecl(char *name, size_t len, ModCType *type, Ast *init) {
   return ast;
 }
 
-Ast *ast_funcdecl(char *name, size_t len, ModCType *type, Ast **params,
+Ast *ast_funcdecl(const char *name, size_t len, ModCType *type, Ast **params,
                   size_t param_count, Ast *body) {
   Ast *ast = ast_create();
 
   ast->variant = AST_FUNC;
   ast->func_decl.name = str_dup_raw(name, len);
-  ast->func_decl.return_type = type;
-  // TODO: maybe change this to a vec / slice
+  (void)type;
+  // TODO: implement make_function_type()
+
+  /* ast->func_decl.func_type = make_function_type(type, params,
+   * param_count); */
+
   ast->func_decl.params = params;
   ast->func_decl.param_count = param_count;
   ast->func_decl.body = body;
@@ -257,7 +285,6 @@ Ast *ast_funccall(Ast *callee, Ast **args, size_t arg_count) {
 
   ast->variant = AST_FUNCALL;
   ast->func_call.callee = callee;
-  // TODO: Again, consider changing to a vec / slice
   ast->func_call.args = args;
   ast->func_call.arg_count = arg_count;
 
@@ -322,7 +349,6 @@ Ast *ast_switch(Ast *switch_expr, Ast **cases, size_t case_count,
 
   ast->variant = AST_SWITCH;
   ast->switch_stmt.switch_expr = switch_expr;
-  // TODO: Again, consider vec / slice
   ast->switch_stmt.cases = cases;
   ast->switch_stmt.case_count = case_count;
   ast->switch_stmt.default_case = default_case;
@@ -330,7 +356,7 @@ Ast *ast_switch(Ast *switch_expr, Ast **cases, size_t case_count,
   return ast;
 }
 
-Ast *ast_case(long long value, Ast *body) {
+Ast *ast_case(size_t value, Ast *body) {
   Ast *ast = ast_create();
 
   ast->variant = AST_CASE;

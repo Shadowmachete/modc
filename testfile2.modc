@@ -1,0 +1,7 @@
+int_8 identity(int_8 x;) {
+  int_16 y;
+}
+
+int_32 z;
+
+int_16 test(char_8 c; uint_16 uin;);

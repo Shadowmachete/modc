@@ -1,8 +1,9 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-#include <stdbool.h>
 #include <stddef.h>
+
+#include "types.h"
 
 typedef enum {
   // builtin types
@@ -112,7 +113,6 @@ typedef enum {
 const char *token_type_to_string(TokenType t);
 
 typedef struct {
-  // TODO: convert to a String struct
   const char *start;
   size_t length;
   size_t line;
@@ -127,12 +127,15 @@ typedef struct {
   size_t line;
 
   Token peeked;
-  bool has_peeked;
+  b8 has_peeked;
 } Lexer;
 
 void lex_init(Lexer *l, const char *src);
 Token lex_next(Lexer *l);
 Token lex_peek(Lexer *l);
+void lex_expect(Lexer *l, TokenType tok_type);
+void lex_expect_range(Lexer *l, TokenType start, TokenType end);
+void lex_expect_next(Lexer *l, TokenType tok_type);
 Token lex_number(Lexer *l, char *c, const char *start);
 void lex_comment(Lexer *l, char *c);
 Token lex_ident(Lexer *l, char *c, const char *start);
