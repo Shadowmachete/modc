@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -197,6 +198,9 @@ again:
       tok.type = TOKEN_NOT;
     }
     break;
+  case '\'':
+  case '\"':
+    return lex_string(l, c, start);
   default:
     tok.type = TOKEN_UNKNOWN;
   }
@@ -270,6 +274,21 @@ Token lex_number(Lexer *l, char *c, const char *start) {
   return (Token){start, len, l->line, TOKEN_NUMBER};
 }
 
+Token lex_string(Lexer *l, char *c, const char *start) {
+  char starting_char = *c;
+
+  c++;
+
+  while (*c != starting_char) {
+    c++;
+  }
+
+  size_t len = c - start - 1;
+  c++;
+  l->pos = c - l->src;
+  return (Token){start + 1, len, l->line, TOKEN_STRING};
+}
+
 void lex_comment(Lexer *l, char *c) {
   c += 2;
   while (*c && *c != '\n')
@@ -339,6 +358,10 @@ Token lex_ident(Lexer *l, char *c, const char *start) {
     tok.type = KW_GOTO;
   else if (MATCH("return"))
     tok.type = KW_RETURN;
+  else if (MATCH("true"))
+    tok.type = KW_TRUE;
+  else if (MATCH("false"))
+    tok.type = KW_FALSE;
   else
     tok.type = TOKEN_IDENTIFIER;
 

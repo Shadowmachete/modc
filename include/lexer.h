@@ -99,6 +99,8 @@ typedef enum {
   KW_CASE,
   KW_GOTO,
   KW_RETURN,
+  KW_TRUE,
+  KW_FALSE,
 
   // variables and values
   TOKEN_NUMBER,
@@ -137,6 +139,7 @@ void lex_expect(Lexer *l, TokenType tok_type);
 void lex_expect_range(Lexer *l, TokenType start, TokenType end);
 void lex_expect_next(Lexer *l, TokenType tok_type);
 Token lex_number(Lexer *l, char *c, const char *start);
+Token lex_string(Lexer *l, char *c, const char *start);
 void lex_comment(Lexer *l, char *c);
 Token lex_ident(Lexer *l, char *c, const char *start);
 

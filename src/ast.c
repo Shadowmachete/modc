@@ -4,6 +4,7 @@
 
 #include "arena.h"
 #include "ast.h"
+#include "lexer.h"
 #include "modc_types.h"
 #include "str.h"
 #include "utils.h"
@@ -66,6 +67,29 @@ VecType vec_ast_ptr_type = {
     .type_str = "Ast *", // vec stores pointers to the asts
 };
 
+AstUnOp ast_toktype_to_unop(TokenType type) {
+  switch (type) {
+  case TOKEN_PLUS_PLUS:
+    return AST_UNOP_PRE_INC;
+  case TOKEN_MINUS_MINUS:
+    return AST_UNOP_PRE_DEC;
+  case TOKEN_PLUS:
+    return AST_UNOP_PLUS;
+  case TOKEN_MINUS:
+    return AST_UNOP_MINUS;
+  case TOKEN_NOT:
+    return AST_UNOP_LOG_NOT;
+  case TOKEN_TILDE:
+    return AST_UNOP_BIT_NOT;
+  case TOKEN_AND:
+    return AST_UNOP_ADDR_OF;
+  case TOKEN_ASTERISK:
+    return AST_UNOP_DEREF;
+  default:
+    return 0; // unreachable
+  }
+}
+
 String *ast_unop_to_string(AstUnOp op) {
   switch (op) {
   case AST_UNOP_POST_INC:
@@ -90,6 +114,71 @@ String *ast_unop_to_string(AstUnOp op) {
     return str_dup_raw("*p", 2);
   }
   return NULL;
+}
+
+AstBinOp ast_toktype_to_binop(TokenType type) {
+  switch (type) {
+  case TOKEN_ASTERISK:
+    return AST_BIN_OP_MUL;
+  case TOKEN_SLASH:
+    return AST_BIN_OP_DIV;
+  case TOKEN_MOD:
+    return AST_BIN_OP_MOD;
+  case TOKEN_PLUS:
+    return AST_BIN_OP_ADD;
+  case TOKEN_MINUS:
+    return AST_BIN_OP_SUB;
+  case TOKEN_LESS_LESS:
+    return AST_BIN_OP_SHL;
+  case TOKEN_GREATER_GREATER:
+    return AST_BIN_OP_SHR;
+  case TOKEN_LESS:
+    return AST_BIN_OP_LT;
+  case TOKEN_LESS_ASSIGN:
+    return AST_BIN_OP_LE;
+  case TOKEN_GREATER:
+    return AST_BIN_OP_GT;
+  case TOKEN_GREATER_ASSIGN:
+    return AST_BIN_OP_GE;
+  case TOKEN_EQ:
+    return AST_BIN_OP_EQ;
+  case TOKEN_NOT_EQUALS:
+    return AST_BIN_OP_NE;
+  case TOKEN_AND:
+    return AST_BIN_OP_BIT_AND;
+  case TOKEN_XOR:
+    return AST_BIN_OP_BIT_XOR;
+  case TOKEN_OR:
+    return AST_BIN_OP_BIT_OR;
+  case TOKEN_AND_AND:
+    return AST_BIN_OP_BIT_AND;
+  case TOKEN_OR_OR:
+    return AST_BIN_OP_BIT_OR;
+  case TOKEN_ASSIGN:
+    return AST_BIN_OP_ASSIGN;
+  case TOKEN_PLUS_ASSIGN:
+    return AST_BIN_OP_ADD_ASSIGN;
+  case TOKEN_MINUS_ASSIGN:
+    return AST_BIN_OP_SUB_ASSIGN;
+  case TOKEN_ASTERISK_ASSIGN:
+    return AST_BIN_OP_MUL_ASSIGN;
+  case TOKEN_SLASH_ASSIGN:
+    return AST_BIN_OP_DIV_ASSIGN;
+  case TOKEN_MOD_ASSIGN:
+    return AST_BIN_OP_MOD_ASSIGN;
+  case TOKEN_LESS_LESS_ASSIGN:
+    return AST_BIN_OP_SHL_ASSIGN;
+  case TOKEN_GREATER_GREATER_ASSIGN:
+    return AST_BIN_OP_SHR_ASSIGN;
+  case TOKEN_AND_ASSIGN:
+    return AST_BIN_OP_AND_ASSIGN;
+  case TOKEN_XOR_ASSIGN:
+    return AST_BIN_OP_XOR_ASSIGN;
+  case TOKEN_OR_ASSIGN:
+    return AST_BIN_OP_OR_ASSIGN;
+  default:
+    return 0; // unreachable
+  }
 }
 
 String *ast_binop_to_string(AstBinOp op) {

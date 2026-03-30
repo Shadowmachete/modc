@@ -19,6 +19,9 @@ void parser_free(Parser *p);
 void parse(Parser *p, const char *src);
 Ast *parse_token(Parser *p, Token t);
 
+Ast *parse_i64(Token t);
+Ast *parse_f64(Token t);
+
 Ast *parse_builtin_type(Parser *p, Token tok);
 Ast *parse_ident(Parser *p, Token tok);
 Ast *parse_if(Parser *p);

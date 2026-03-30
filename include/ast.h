@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "lexer.h"
 #include "modc_types.h"
 #include "str.h"
 #include "types.h"
@@ -10,75 +11,77 @@
 
 typedef enum {
   // postfix
-  AST_UNOP_POST_INC, // x++
-  AST_UNOP_POST_DEC, // x--
+  AST_UNOP_POST_INC = 1, // x++
+  AST_UNOP_POST_DEC = 3, // x--
 
   // prefix
-  AST_UNOP_PRE_INC, // ++x
-  AST_UNOP_PRE_DEC, // --x
+  AST_UNOP_PRE_INC = 5, // ++x
+  AST_UNOP_PRE_DEC = 7, // --x
 
   // arithmetic sign
-  AST_UNOP_PLUS,  // +x
-  AST_UNOP_MINUS, // -x
+  AST_UNOP_PLUS = 9,   // +x
+  AST_UNOP_MINUS = 11, // -x
 
   // logical & bitwise
-  AST_UNOP_LOG_NOT, // !x
-  AST_UNOP_BIT_NOT, // ~x
+  AST_UNOP_LOG_NOT = 13, // !x
+  AST_UNOP_BIT_NOT = 15, // ~x
 
   // pointer & address
-  AST_UNOP_ADDR_OF, // &x
-  AST_UNOP_DEREF,   // *p
+  AST_UNOP_ADDR_OF = 17, // &x
+  AST_UNOP_DEREF = 19,   // *p
 } AstUnOp;
 
+AstUnOp ast_toktype_to_unop(TokenType type);
 String *ast_unop_to_string(AstUnOp op);
 
 typedef enum {
   // multiplicative
-  AST_BIN_OP_MUL, // a * b
-  AST_BIN_OP_DIV, // a / b
-  AST_BIN_OP_MOD, // a % b
+  AST_BIN_OP_MUL = 0, // a * b
+  AST_BIN_OP_DIV = 2, // a / b
+  AST_BIN_OP_MOD = 4, // a % b
 
   // additive
-  AST_BIN_OP_ADD, // a + b
-  AST_BIN_OP_SUB, // a - b
+  AST_BIN_OP_ADD = 6, // a + b
+  AST_BIN_OP_SUB = 8, // a - b
 
   // bit-shift
-  AST_BIN_OP_SHL, // a << b
-  AST_BIN_OP_SHR, // a >> b
+  AST_BIN_OP_SHL = 10, // a << b
+  AST_BIN_OP_SHR = 12, // a >> b
 
   // relational
-  AST_BIN_OP_LT, // a  <   b
-  AST_BIN_OP_LE, // a  <=  b
-  AST_BIN_OP_GT, // a  >   b
-  AST_BIN_OP_GE, // a  >=  b
+  AST_BIN_OP_LT = 14, // a  <   b
+  AST_BIN_OP_LE = 16, // a  <=  b
+  AST_BIN_OP_GT = 18, // a  >   b
+  AST_BIN_OP_GE = 20, // a  >=  b
 
   // equality
-  AST_BIN_OP_EQ, // a == b
-  AST_BIN_OP_NE, // a != b
+  AST_BIN_OP_EQ = 22, // a == b
+  AST_BIN_OP_NE = 24, // a != b
 
   // bitwise
-  AST_BIN_OP_BIT_AND, // a & b
-  AST_BIN_OP_BIT_XOR, // a ^ b
-  AST_BIN_OP_BIT_OR,  // a | b
+  AST_BIN_OP_BIT_AND = 26, // a & b
+  AST_BIN_OP_BIT_XOR = 28, // a ^ b
+  AST_BIN_OP_BIT_OR = 30,  // a | b
 
   // logical
-  AST_BIN_OP_LOG_AND, // a && b
-  AST_BIN_OP_LOG_OR,  // a || b
+  AST_BIN_OP_LOG_AND = 32, // a && b
+  AST_BIN_OP_LOG_OR = 34,  // a || b
 
   // assignment (simple + compound)
-  AST_BIN_OP_ASSIGN,     // a   =  b
-  AST_BIN_OP_ADD_ASSIGN, // a  +=  b
-  AST_BIN_OP_SUB_ASSIGN, // a  -=  b
-  AST_BIN_OP_MUL_ASSIGN, // a  *=  b
-  AST_BIN_OP_DIV_ASSIGN, // a  /=  b
-  AST_BIN_OP_MOD_ASSIGN, // a  %=  b
-  AST_BIN_OP_SHL_ASSIGN, // a  <<= b
-  AST_BIN_OP_SHR_ASSIGN, // a  >>= b
-  AST_BIN_OP_AND_ASSIGN, // a  &=  b
-  AST_BIN_OP_XOR_ASSIGN, // a  ^=  b
-  AST_BIN_OP_OR_ASSIGN,  // a  |=  b
+  AST_BIN_OP_ASSIGN = 36,     // a   =  b
+  AST_BIN_OP_ADD_ASSIGN = 38, // a  +=  b
+  AST_BIN_OP_SUB_ASSIGN = 40, // a  -=  b
+  AST_BIN_OP_MUL_ASSIGN = 42, // a  *=  b
+  AST_BIN_OP_DIV_ASSIGN = 44, // a  /=  b
+  AST_BIN_OP_MOD_ASSIGN = 46, // a  %=  b
+  AST_BIN_OP_SHL_ASSIGN = 48, // a  <<= b
+  AST_BIN_OP_SHR_ASSIGN = 50, // a  >>= b
+  AST_BIN_OP_AND_ASSIGN = 52, // a  &=  b
+  AST_BIN_OP_XOR_ASSIGN = 54, // a  ^=  b
+  AST_BIN_OP_OR_ASSIGN = 56,  // a  |=  b
 } AstBinOp;
 
+AstBinOp ast_toktype_to_binop(TokenType type);
 String *ast_binop_to_string(AstBinOp op);
 
 typedef enum {
