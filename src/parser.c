@@ -217,8 +217,6 @@ Ast *parse_if(Parser *p) {
     els = parse_block(p);
 
     lex_expect_next(p->lexer, TOKEN_RCURLY);
-  } else {
-    lex_expect_next(p->lexer, TOKEN_SEMICOLON);
   }
 
   Ast *ast = ast_if(cond, body, els);
@@ -242,7 +240,6 @@ Ast *parse_while(Parser *p) {
   Ast *body = parse_block(p);
 
   lex_expect_next(p->lexer, TOKEN_RCURLY);
-  lex_expect_next(p->lexer, TOKEN_SEMICOLON);
 
   Ast *ast = ast_while(cond, body);
   return ast;
@@ -256,10 +253,10 @@ Ast *parse_for(Parser *p) {
    */
 
   lex_expect_next(p->lexer, TOKEN_LPAREN);
+  lex_expect_range(p->lexer, T_CHAR8, T_VOID); // expect it to be a type
+  Token t = lex_next(p->lexer);
 
-  Ast *init = parse_expr(p);
-
-  lex_expect_next(p->lexer, TOKEN_SEMICOLON);
+  Ast *init = parse_builtin_type(p, t);
 
   Ast *cond = parse_expr(p);
 
@@ -273,7 +270,6 @@ Ast *parse_for(Parser *p) {
   Ast *body = parse_block(p);
 
   lex_expect_next(p->lexer, TOKEN_RCURLY);
-  lex_expect_next(p->lexer, TOKEN_SEMICOLON);
 
   Ast *ast = ast_for(init, cond, step, body);
   return ast;
@@ -310,6 +306,27 @@ Ast **parse_function_params(Parser *p, int *param_count) {
   memmove(ast_statements, params->items, params->size * sizeof(Ast *));
 
   vec_release(params);
+
+  return ast_statements;
+}
+
+Ast **parse_function_args(Parser *p, int *arg_count) {
+  Vec *args = vec_new(&vec_ast_ptr_type);
+
+  Token next = lex_peek(p->lexer);
+
+  while (next.type != TOKEN_RPAREN) {
+    lex_next(p->lexer);
+    vec_push(args, (void *)parse_expr(p));
+    next = lex_peek(p->lexer);
+  }
+
+  *arg_count = args->size;
+
+  Ast **ast_statements = ast_create_array(args->size);
+  memmove(ast_statements, args->items, args->size * sizeof(Ast *));
+
+  vec_release(args);
 
   return ast_statements;
 }
@@ -391,9 +408,10 @@ Ast *parse_postfix(Parser *p, Ast *left) {
 
     if (t.type == TOKEN_LPAREN) {
       // function call
-      // int arg_count = 0;
-      // Ast **args = parse_function_args(p, &arg_count);
-      // left = ast_funccall(ident, args, arg_count);
+      int arg_count = 0;
+      Ast **args = parse_function_args(p, &arg_count);
+      lex_expect_next(p->lexer, TOKEN_RPAREN);
+      left = ast_funccall(left, args, arg_count);
       break;
     }
 

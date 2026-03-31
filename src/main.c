@@ -26,6 +26,8 @@ int main(int argc, char *argv[]) {
 
   parse(parser, source); // produce AST
 
+  ast_print(parser->ast, 0);
+
   free(source);
   parser_free(parser);
   global_arena_release();

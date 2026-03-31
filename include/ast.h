@@ -270,6 +270,8 @@ Ast *ast_switch(Ast *switch_expr, Ast **cases, size_t case_count,
                 Ast *default_case);
 Ast *ast_case(size_t value, Ast *body);
 
+void ast_print(Ast *ast, int depth);
+
 extern VecType vec_ast_ptr_type;
 
 #endif // !AST_H

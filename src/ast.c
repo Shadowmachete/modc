@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -93,25 +94,25 @@ AstUnOp ast_toktype_to_unop(TokenType type) {
 String *ast_unop_to_string(AstUnOp op) {
   switch (op) {
   case AST_UNOP_POST_INC:
-    return str_dup_raw("x++", 3);
+    return str_dup_raw("++", 3);
   case AST_UNOP_POST_DEC:
-    return str_dup_raw("x--", 3);
+    return str_dup_raw("--", 3);
   case AST_UNOP_PRE_INC:
-    return str_dup_raw("++x", 3);
+    return str_dup_raw("++", 3);
   case AST_UNOP_PRE_DEC:
-    return str_dup_raw("--x", 3);
+    return str_dup_raw("--", 3);
   case AST_UNOP_PLUS:
-    return str_dup_raw("+x", 2);
+    return str_dup_raw("+", 2);
   case AST_UNOP_MINUS:
-    return str_dup_raw("-x", 2);
+    return str_dup_raw("-", 2);
   case AST_UNOP_LOG_NOT:
-    return str_dup_raw("!x", 2);
+    return str_dup_raw("!", 2);
   case AST_UNOP_BIT_NOT:
-    return str_dup_raw("~x", 2);
+    return str_dup_raw("~", 2);
   case AST_UNOP_ADDR_OF:
-    return str_dup_raw("&x", 2);
+    return str_dup_raw("&", 2);
   case AST_UNOP_DEREF:
-    return str_dup_raw("*p", 2);
+    return str_dup_raw("*", 2);
   }
   return NULL;
 }
@@ -453,4 +454,139 @@ Ast *ast_case(size_t value, Ast *body) {
   ast->case_stmt.body = body;
 
   return ast;
+}
+
+static void print_string(String *str) {
+  printf("%.*s\n", (int)str->len, str->data);
+}
+
+static void print_depth(int depth) {
+  if (depth <= 0)
+    return;
+  int spaces = (depth - 1) * 4;
+  printf("%*s└──►", spaces, "");
+}
+
+void ast_print(Ast *ast, int depth) {
+  switch (ast->variant) {
+  case AST_INTEGER:
+    print_depth(depth);
+    printf("%ld\n", ast->number.value);
+    break;
+  case AST_FLOAT:
+    print_depth(depth);
+    printf("%lf\n", ast->fvalue.value);
+    break;
+  case AST_STRING:
+    print_depth(depth);
+    print_string(ast->string.value);
+    break;
+  case AST_BOOL:
+    print_depth(depth);
+    printf("%ld\n", ast->number.value);
+    break;
+  case AST_IDENTIFIER:
+    print_depth(depth);
+    print_string(ast->string.value);
+    break;
+  case AST_UNOP:
+    if (ast->unary.unop == AST_UNOP_POST_INC ||
+        ast->unary.unop == AST_UNOP_POST_DEC) {
+      ast_print(ast->unary.expr, depth);
+      print_depth(depth + 1);
+      print_string(ast_unop_to_string(ast->unary.unop));
+    } else {
+      print_depth(depth);
+      print_string(ast_unop_to_string(ast->unary.unop));
+      ast_print(ast->unary.expr, depth + 1);
+    }
+    break;
+  case AST_BINOP:
+    print_depth(depth);
+    print_string(ast_binop_to_string(ast->binary.binop));
+    ast_print(ast->binary.left, depth + 1);
+    ast_print(ast->binary.right, depth + 1);
+    break;
+  case AST_VAR:
+    print_depth(depth);
+    print_string(ast->var_decl.name);
+    // print type
+    if (ast->var_decl.initializer) {
+      printf("%*s=\n", depth * 4, "");
+      ast_print(ast->var_decl.initializer, depth + 1);
+    }
+    break;
+  case AST_FUNC:
+    print_depth(depth);
+    print_string(ast->func_decl.name);
+    // print type
+
+    if (ast->func_decl.param_count > 0) {
+      printf("%*sparams:\n", depth * 4, "");
+      for (size_t i = 0; i < ast->func_decl.param_count; i++) {
+        ast_print(ast->func_decl.params[i], depth + 1);
+      }
+    }
+
+    if (ast->func_decl.body) {
+      printf("%*sbody:\n", depth * 4, "");
+      ast_print(ast->func_decl.body, depth + 1);
+    }
+    break;
+  case AST_FUNCALL:
+    ast_print(ast->func_call.callee, depth);
+
+    if (ast->func_call.arg_count > 0) {
+      printf("%*sargs:\n", depth * 4, "");
+      for (size_t i = 0; i < ast->func_call.arg_count; i++) {
+        ast_print(ast->func_call.args[i], depth + 1);
+      }
+    }
+    break;
+  case AST_FUNPTR:
+  case AST_FUNPTR_CALL:
+    break;
+  case AST_BLOCK:
+    for (size_t i = 0; i < ast->block.stmt_count; i++) {
+      ast_print(ast->block.statements[i], depth);
+    }
+    break;
+  case AST_IF:
+    print_depth(depth);
+    printf("if\n");
+    ast_print(ast->if_stmt.cond, depth + 1);
+    printf("%*sthen\n", depth * 4, "");
+    ast_print(ast->if_stmt.then, depth + 1);
+
+    if (ast->if_stmt.els) {
+      printf("%*selse\n", depth * 4, "");
+      ast_print(ast->if_stmt.els, depth + 1);
+    }
+    break;
+  case AST_FOR:
+    print_depth(depth);
+    printf("for\n");
+    ast_print(ast->for_stmt.forinit, depth + 1);
+    ast_print(ast->for_stmt.forcond, depth + 1);
+    ast_print(ast->for_stmt.forstep, depth + 1);
+    ast_print(ast->for_stmt.forbody, depth + 1);
+    break;
+  case AST_WHILE:
+    print_depth(depth);
+    printf("while\n");
+    ast_print(ast->while_stmt.whilecond, depth + 1);
+    ast_print(ast->while_stmt.whilebody, depth + 1);
+    break;
+  case AST_RETURN:
+    ast_print(ast->return_stmt.expr, depth);
+    break;
+  case AST_BREAK:
+  case AST_CONTINUE:
+  case AST_SWITCH:
+  case AST_CASE:
+  case AST_JUMP:
+    break;
+  default:
+    break; // unreachable
+  }
 }
