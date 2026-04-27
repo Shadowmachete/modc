@@ -12,7 +12,7 @@
 void error(size_t line, const char *fmt, ...) {
   va_list ap;
 
-  fprintf(stderr, "modcc: error: line %zu: ", line);
+  fprintf(stderr, "modcc: [ERROR]: line %zu: ", line);
 
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -20,8 +20,32 @@ void error(size_t line, const char *fmt, ...) {
 
   fputc('\n', stderr);
   fflush(stderr);
+}
 
-  exit(1);
+void warning(size_t line, const char *fmt, ...) {
+  va_list ap;
+
+  fprintf(stdout, "modcc: [WARNING]: line %zu: ", line);
+
+  va_start(ap, fmt);
+  vfprintf(stdout, fmt, ap);
+  va_end(ap);
+
+  fputc('\n', stdout);
+  fflush(stdout);
+}
+
+void info(size_t line, const char *fmt, ...) {
+  va_list ap;
+
+  fprintf(stdout, "modcc: [INFO]: line %zu: ", line);
+
+  va_start(ap, fmt);
+  vfprintf(stdout, fmt, ap);
+  va_end(ap);
+
+  fputc('\n', stdout);
+  fflush(stdout);
 }
 
 char *readin(char *file) {

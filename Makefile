@@ -24,7 +24,7 @@ SRCS := $(shell find $(SRC_DIR) -name '*.c')
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 # executable
-EXEC := main
+EXEC := modcc
 
 all: $(EXEC)
 

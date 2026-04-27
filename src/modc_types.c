@@ -1,8 +1,11 @@
-#include "modc_types.h"
-#include "arena.h"
-#include "lexer.h"
-#include "utils.h"
 #include <string.h>
+
+#include "arena.h"
+#include "ast.h"
+#include "lexer.h"
+#include "modc_types.h"
+#include "str.h"
+#include "utils.h"
 
 static Arena modctype_arena;
 static int modctype_arena_init = 0;
@@ -34,6 +37,18 @@ ModCType *modctype_create(void) {
   memset(type, 0, sizeof(ModCType));
 
   return type;
+}
+
+ModCType **modctype_create_array(int len) {
+  ModCType **modctype_array =
+      (ModCType **)arena_alloc(&modctype_arena, sizeof(ModCType *) * len);
+
+  if (!modctype_array)
+    error(0, "arena alloc failed creating ModCType array");
+
+  memset(modctype_array, 0, sizeof(ModCType *) * len);
+
+  return modctype_array;
 }
 
 ModCType *char_8_type = &(ModCType){
@@ -69,9 +84,9 @@ ModCType *float_64_type = &(ModCType){
     .variant = TYPE_FLOAT, .size = 8, .is_signed = false, .builtin = T_FLOAT64};
 
 ModCType *bool_type = &(ModCType){
-    .variant = TYPE_INT, .size = 1, .is_signed = false, .builtin = T_BOOL};
+    .variant = TYPE_BOOL, .size = 1, .is_signed = false, .builtin = T_BOOL};
 ModCType *void_type = &(ModCType){
-    .variant = TYPE_INT, .size = 0, .is_signed = false, .builtin = T_VOID};
+    .variant = TYPE_VOID, .size = 0, .is_signed = false, .builtin = T_VOID};
 
 ModCType *type_to_builtin(TokenType type) {
   switch (type) {
@@ -108,13 +123,40 @@ ModCType *type_to_builtin(TokenType type) {
   case T_VOID:
     return void_type;
   default:
-    error(0, "Invalid builtin type %s passed to builtin_to_type",
+    error(0, "Invalid builtin token %s passed to builtin_to_type",
           token_type_to_string(type));
   }
   return NULL;
 }
 
-ModCType *pointer_to(ModCType *base) {
+String *modctype_to_string(ModCType *type) {
+  switch (type->variant) {
+  case TYPE_STRUCT:
+    return str_dup_raw(type->structure.name, strlen(type->structure.name));
+  case TYPE_ARRAY: {
+    String *element_str = modctype_to_string(type->array.element);
+    String *ret = str_new();
+    str_catprintf(ret, "[%.*s, %d]", (int)element_str->len, element_str->data,
+                  type->array.length);
+    return ret;
+  }
+  case TYPE_POINTER: {
+    String *element_str = modctype_to_string(type->pointer.base);
+    String *ret = str_new();
+    str_catprintf(ret, "%.*s%*s", (int)element_str->len, element_str->data,
+                  type->pointer.depth, "*");
+    return ret;
+  }
+  case TYPE_FUNCTION:
+    return NULL;
+  default: {
+    const char *cstr = token_type_to_string(type->builtin);
+    return str_dup_raw(cstr, strlen(cstr));
+  }
+  }
+}
+
+ModCType *pointer_to(ModCType *base, int ptr_depth) {
   if (base->ptr_to)
     return base->ptr_to;
 
@@ -122,7 +164,9 @@ ModCType *pointer_to(ModCType *base) {
 
   type->variant = TYPE_POINTER;
   type->size = 8;
+  // assuming 64bit pointers, probably only going to support that
   type->pointer.base = base;
+  type->pointer.depth = ptr_depth;
 
   base->ptr_to = type;
   return type;
@@ -131,8 +175,123 @@ ModCType *pointer_to(ModCType *base) {
 ModCType *make_pointer_type(ModCType *base, int ptr_depth) {
   ModCType *type = base;
   for (int i = 0; i < ptr_depth; i++) {
-    type = pointer_to(type);
+    type = pointer_to(type, i + 1);
   }
 
   return type;
+}
+
+ModCType *make_array_type(ModCType *element, int len) {
+  ModCType *type = modctype_create();
+
+  type->variant = TYPE_ARRAY;
+  type->size = element->size * len;
+  type->array.element = element;
+  type->array.length = len;
+
+  return type;
+}
+
+ModCType *make_function_type(ModCType *ret_type, Ast **params,
+                             int param_count) {
+  ModCType *type = modctype_create();
+
+  type->variant = TYPE_FUNCTION;
+  type->size = 1;
+  type->function.return_type = ret_type;
+
+  ModCType **modctype_array = modctype_create_array(param_count);
+  for (int i = 0; i < param_count; i++) {
+    modctype_array[i] = params[i]->type;
+  }
+
+  type->function.params = modctype_array;
+
+  type->function.param_count = param_count;
+
+  return type;
+}
+
+ModCType *signed_type_wider_than(size_t size) {
+  switch (size) {
+  case 1:
+    return int_16_type;
+  case 2:
+    return int_32_type;
+  case 4:
+  default:
+    return int_64_type;
+  }
+}
+
+ModCType *common_numeric_type(ModCType *a, ModCType *b, int *cast_lhs,
+                              int *cast_rhs) {
+  *cast_lhs = 0;
+  *cast_rhs = 0;
+
+  if (a == b)
+    return a;
+
+  // check if non-numeric
+  if (a->variant != TYPE_INT || b->variant != TYPE_INT ||
+      a->variant != TYPE_FLOAT || b->variant != TYPE_FLOAT)
+    return NULL;
+
+  b8 a_is_float = (a->variant == TYPE_FLOAT);
+  b8 b_is_float = (b->variant == TYPE_FLOAT);
+
+  ModCType *result;
+
+  if (a_is_float != b_is_float) {
+    ModCType *float_t = a_is_float ? a : b;
+    ModCType *int_t = a_is_float ? b : a;
+
+    if (int_t->size >= 8 && float_t->size <= 4)
+      result = float_64_type;
+    else if (int_t->size >= 4 && float_t->size == 2)
+      result = float_32_type;
+    else
+      result = float_t;
+  } else if (a_is_float) {
+    result = (a->size >= b->size) ? a : b;
+  } else {
+    if (a->size != b->size) {
+      result = (a->size >= b->size) ? a : b;
+    } else {
+      if (a->is_signed != b->is_signed) {
+        result = signed_type_wider_than(a->size);
+      } else {
+        result = a;
+      }
+    }
+  }
+
+  *cast_lhs = (a != result);
+  *cast_rhs = (b != result);
+
+  return result;
+}
+
+ModCType *make_combined_type(Ast *node) {
+  AstBinOp op = node->binary.binop;
+  ModCType *left = node->binary.left->type;
+  ModCType *right = node->binary.right->type;
+
+  int cast_lhs, cast_rhs;
+
+  ModCType *result = common_numeric_type(left, right, &cast_lhs, &cast_rhs);
+
+  if (result == NULL) {
+    (void)op;
+    // TODO: check overload table for string + string, Vec2 + Vec2 etc
+
+    return NULL;
+  }
+
+  if (cast_lhs)
+    node->binary.left = ast_cast(node->binary.left, result);
+  if (cast_rhs)
+    node->binary.right = ast_cast(node->binary.right, result);
+
+  return result;
 }

@@ -1,5 +1,6 @@
-int_8 main() {
-  int_8 x = 100;
+float_16 main() {
+  float_16 x = 100.0;
+
   x += 50;
 
   if (x > 10) {
@@ -10,13 +11,9 @@ int_8 main() {
     x++;
   }
 
-  x = sum(x, 5);
-
   for (int_8 i = 1; i < x; i++) {
     x -= 1;
   }
-}
 
-int_8 sum(int_8 x; int_8 y = 10;) {
-  x + y;
+  return x;
 }

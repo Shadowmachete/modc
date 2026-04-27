@@ -40,6 +40,8 @@ Ast *ast_create(void) {
 
   memset(ast, 0, sizeof(Ast));
 
+  ast->type = NULL;
+
   return ast;
 }
 
@@ -292,9 +294,7 @@ Ast *ast_string(const char *str, size_t len) {
   ast->variant = AST_STRING;
   ast->string.value = str_dup_raw(str, len);
 
-  // TODO: implement make_array_type()
-
-  /* ast->type = make_array_type(char_8_type, len); */
+  ast->type = make_array_type(char_8_type, len);
   return ast;
 }
 
@@ -325,17 +325,18 @@ Ast *ast_binop(AstBinOp op, Ast *left, Ast *right, int *_is_err) {
   ast->binary.left = left;
   ast->binary.right = right;
 
-  if (op == AST_BIN_OP_EQ || op == AST_BIN_OP_NE) {
-    ast->type = bool_type;
-  } else {
-    // TODO: implement make_combined_type()
-
-    /* ast->type = make_combined_type(left, right) */
-    // calculate the return type of the operation
-  }
+  /* if (op == AST_BIN_OP_EQ || op == AST_BIN_OP_NE || op == AST_BIN_OP_LE || */
+  /*     op == AST_BIN_OP_LT || op == AST_BIN_OP_GE || op == AST_BIN_OP_GT) { */
+  /*   ast->type = bool_type; */
+  /* } else { */
+  /*   ast->type = make_combined_type(op, ast); */
+  /*   if (ast->type == NULL) { */
+  /*     *_is_err = 1; */
+  /*     return ast; */
+  /*   } */
+  /* } */
 
   *_is_err = 0;
-  // forgot what _is_err is for but ill figure it out in the future
 
   return ast;
 }
@@ -357,11 +358,7 @@ Ast *ast_funcdecl(const char *name, size_t len, ModCType *type, Ast **params,
 
   ast->variant = AST_FUNC;
   ast->func_decl.name = str_dup_raw(name, len);
-  (void)type;
-  // TODO: implement make_function_type()
-
-  /* ast->func_decl.func_type = make_function_type(type, params,
-   * param_count); */
+  ast->func_decl.func_type = make_function_type(type, params, param_count);
 
   ast->func_decl.params = params;
   ast->func_decl.param_count = param_count;
@@ -385,6 +382,7 @@ Ast *ast_block(Ast **statements, size_t stmt_count) {
   Ast *ast = ast_create();
 
   ast->variant = AST_BLOCK;
+  ast->block.scope = NULL;
   ast->block.statements = statements;
   ast->block.stmt_count = stmt_count;
 
@@ -452,6 +450,16 @@ Ast *ast_case(size_t value, Ast *body) {
   ast->variant = AST_CASE;
   ast->case_stmt.value = value;
   ast->case_stmt.body = body;
+
+  return ast;
+}
+
+Ast *ast_cast(Ast *expr, ModCType *type) {
+  Ast *ast = ast_create();
+
+  ast->variant = AST_CAST;
+  ast->type_cast.type = type;
+  ast->type_cast.expr = expr;
 
   return ast;
 }
@@ -578,6 +586,7 @@ void ast_print(Ast *ast, int depth) {
     ast_print(ast->while_stmt.whilebody, depth + 1);
     break;
   case AST_RETURN:
+    printf("return\n");
     ast_print(ast->return_stmt.expr, depth);
     break;
   case AST_BREAK:
@@ -585,6 +594,13 @@ void ast_print(Ast *ast, int depth) {
   case AST_SWITCH:
   case AST_CASE:
   case AST_JUMP:
+    break;
+  case AST_CAST:
+    print_depth(depth);
+    printf("(");
+    print_string(modctype_to_string(ast->type_cast.type));
+    printf(")");
+    ast_print(ast->type_cast.expr, depth);
     break;
   default:
     break; // unreachable

@@ -338,8 +338,6 @@ Token lex_ident(Lexer *l, char *c, const char *start) {
     tok.type = T_BOOL;
   else if (MATCH("struct"))
     tok.type = T_STRUCT;
-  else if (MATCH("class"))
-    tok.type = T_CLASS;
   else if (MATCH("void"))
     tok.type = T_VOID;
   else if (MATCH("if"))
@@ -414,8 +412,6 @@ const char *token_type_to_string(TokenType t) {
 
   case T_STRUCT:
     return "STRUCT";
-  case T_CLASS:
-    return "CLASS";
   case T_VOID:
     return "VOID";
 

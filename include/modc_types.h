@@ -4,9 +4,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "ast.h"
 #include "lexer.h"
+#include "str.h"
 
 typedef struct ModCType ModCType;
+typedef struct Ast Ast;
 
 struct ModCType {
   enum {
@@ -20,6 +23,7 @@ struct ModCType {
     TYPE_POINTER,
     TYPE_ARRAY,
     TYPE_FUNCTION,
+
     TYPE_STRUCT,
   } variant;
 
@@ -34,6 +38,7 @@ struct ModCType {
 
     struct {
       ModCType *base;
+      int depth;
     } pointer;
 
     struct {
@@ -73,7 +78,16 @@ extern ModCType *float_64_type;
 extern ModCType *bool_type;
 extern ModCType *void_type;
 
-ModCType *type_to_builtin(TokenType type);
-ModCType *make_pointer_type(ModCType *base, int ptr_depth);
+void modctype_memory_init(void);
+void modctype_memory_release(void);
 
-#endif // !TYPES_H
+ModCType *type_to_builtin(TokenType type);
+String *modctype_to_string(ModCType *type);
+
+ModCType *make_pointer_type(ModCType *base, int ptr_depth);
+ModCType *make_array_type(ModCType *base, int len);
+ModCType *make_function_type(ModCType *ret_type, Ast **params, int param_count);
+ModCType *signed_type_wider_than(size_t size);
+ModCType *make_combined_type(Ast *node);
+
+#endif // !MODC_TYPES_H

@@ -4,10 +4,12 @@
 #include <stdint.h>
 
 #include "lexer.h"
-#include "modc_types.h"
 #include "str.h"
 #include "types.h"
 #include "vec.h"
+
+typedef struct ModCType ModCType;
+typedef struct Scope Scope;
 
 typedef enum {
   // postfix
@@ -67,7 +69,7 @@ typedef enum {
   AST_BIN_OP_LOG_AND = 32, // a && b
   AST_BIN_OP_LOG_OR = 34,  // a || b
 
-  // assignment (simple + compound)
+  // assignment
   AST_BIN_OP_ASSIGN = 36,     // a   =  b
   AST_BIN_OP_ADD_ASSIGN = 38, // a  +=  b
   AST_BIN_OP_SUB_ASSIGN = 40, // a  -=  b
@@ -112,16 +114,17 @@ typedef enum {
   AST_SWITCH,
   AST_CASE,
   AST_JUMP,
+  AST_CAST,
 } AstVariant;
 
 typedef struct Ast Ast;
 
 struct Ast {
-  // TODO: add support for functions and declarations and funptrs
-  // and calling functions
+  // TODO: add support for funptrs
   AstVariant variant;
   ModCType *type;
-  void *symbol;
+
+  int line;
 
   union {
     // literals
@@ -156,11 +159,11 @@ struct Ast {
     } binary;
 
     // variable declaration
-    // e.g. int_64 x = 10;
+    // e.g. int_64 x [= 10];
     struct {
       String *name; // TODO: Maybe change to String_View
       ModCType *type;
-      Ast *initializer;
+      Ast *initializer; // optional
     } var_decl;
 
     // function declaration
@@ -175,7 +178,7 @@ struct Ast {
                     // decides to allocate its memory, e.g. into the arena via
                     // the arena_alloc or just to malloc
       size_t param_count;
-      Ast *body;
+      Ast *body; // required
     } func_decl;
 
     // function call
@@ -187,6 +190,7 @@ struct Ast {
 
     // block
     struct {
+      Scope *scope;
       Ast **statements;
       size_t stmt_count;
     } block;
@@ -230,6 +234,12 @@ struct Ast {
       size_t value;
       Ast *body;
     } case_stmt;
+
+    // cast
+    struct {
+      Ast *expr;
+      ModCType *type;
+    } type_cast;
   };
 };
 
@@ -269,6 +279,7 @@ Ast *ast_return(Ast *expr);
 Ast *ast_switch(Ast *switch_expr, Ast **cases, size_t case_count,
                 Ast *default_case);
 Ast *ast_case(size_t value, Ast *body);
+Ast *ast_cast(Ast *expr, ModCType *type);
 
 void ast_print(Ast *ast, int depth);
 

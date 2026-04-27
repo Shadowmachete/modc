@@ -24,10 +24,11 @@ Ast *parse_f64(Token t);
 
 Ast *parse_builtin_type(Parser *p, Token tok);
 Ast *parse_ident(Parser *p, Token tok);
-Ast *parse_if(Parser *p);
-Ast *parse_while(Parser *p);
-Ast *parse_for(Parser *p);
+Ast *parse_if(Parser *p, Token tok);
+Ast *parse_while(Parser *p, Token tok);
+Ast *parse_for(Parser *p, Token tok);
 Ast *parse_switch(Parser *p, Token tok);
+Ast *parse_return(Parser *p, Token tok);
 
 Ast **parse_function_params(Parser *p, int *param_count);
 Ast **parse_function_args(Parser *p, int *arg_count);

@@ -28,7 +28,6 @@ typedef enum {
   T_BOOL,
 
   T_STRUCT,
-  T_CLASS,
 
   T_VOID,
 

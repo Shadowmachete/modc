@@ -27,9 +27,9 @@ void parser_free(Parser *p) { free(p); }
 void parse(Parser *p, const char *src) {
   lex_init(p->lexer, src);
 
-  Ast *ast =
-      parse_block(p); // each block will be considered its own variable
-                      // scope, this will allow for shadowing of variable names
+  Ast *ast = parse_block(p);
+  // each block will be considered its own variable
+  // scope, this will allow for shadowing of variable names
   p->ast = ast;
 }
 
@@ -55,22 +55,23 @@ Ast *parse_token(Parser *p, Token t) {
   case T_VOID:
     lex_next(p->lexer);
     return parse_builtin_type(p, t);
-  case T_STRUCT:
-  case T_CLASS:
-    // TODO: implement class and struct declaration
+  case T_STRUCT: // TODO: implement
     return NULL;
   case KW_IF:
     lex_next(p->lexer);
-    return parse_if(p);
+    return parse_if(p, t);
   case KW_WHILE:
     lex_next(p->lexer);
-    return parse_while(p);
+    return parse_while(p, t);
   case KW_FOR:
     lex_next(p->lexer);
-    return parse_for(p);
+    return parse_for(p, t);
   case KW_SWITCH:
     lex_next(p->lexer);
     return parse_switch(p, t);
+  case KW_RETURN:
+    lex_next(p->lexer);
+    return parse_return(p, t);
   default: {
     Ast *expr = parse_expr(p);
     lex_expect_next(p->lexer, TOKEN_SEMICOLON);
@@ -85,7 +86,9 @@ Ast *parse_i64(Token t) {
   size_t n = t.length < (sizeof(buf) - 1) ? t.length : (sizeof(buf) - 1);
   memcpy(buf, t.start, n);
   buf[n] = 0;
-  return ast_int64((i64)strtoll(buf, NULL, 10));
+  Ast *ast = ast_int64((i64)strtoll(buf, NULL, 10));
+  ast->line = t.line;
+  return ast;
 }
 
 Ast *parse_f64(Token t) {
@@ -94,10 +97,14 @@ Ast *parse_f64(Token t) {
   size_t n = t.length < (sizeof(buf) - 1) ? t.length : (sizeof(buf) - 1);
   memcpy(buf, t.start, n);
   buf[n] = 0;
-  return ast_float64(strtod(buf, NULL));
+  Ast *ast = ast_float64(strtod(buf, NULL));
+  ast->line = t.line;
+  return ast;
 }
 
 Ast *parse_builtin_type(Parser *p, Token tok) {
+  int decl_line = tok.line;
+
   int ptr_depth = 0;
   while (lex_peek(p->lexer).type == TOKEN_ASTERISK) {
     ptr_depth++;
@@ -147,17 +154,18 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
     lex_expect_next(p->lexer, TOKEN_RPAREN);
     tok = lex_peek(p->lexer);
 
-    Ast *body = NULL;
+    // no forward declarations needed, only full declaration with body since
+    // compiler will traverse the ast multiple times
 
-    if (tok.type == TOKEN_LCURLY) {
-      lex_next(p->lexer);
-      body = parse_block(p);
-      lex_expect_next(p->lexer, TOKEN_RCURLY);
-    } else {
-      lex_expect_next(p->lexer, TOKEN_SEMICOLON);
-    }
+    lex_expect_next(p->lexer, TOKEN_LCURLY);
+
+    Ast *body = parse_block(p);
+
+    lex_expect_next(p->lexer, TOKEN_RCURLY);
 
     Ast *ast = ast_funcdecl(name, len, type, params, param_count, body);
+
+    ast->line = decl_line;
 
     return ast;
   } else {
@@ -171,7 +179,11 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
       init = parse_expr(p);
     }
 
+    // TODO: when generating code, if not a function param replace the init with
+    // default init for the respective type. e.g. 0 for int, "" for string
+
     Ast *ast = ast_vardecl(name, len, type, init);
+    ast->line = decl_line;
 
     lex_expect_next(p->lexer, TOKEN_SEMICOLON);
 
@@ -182,11 +194,12 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
 Ast *parse_ident(Parser *p, Token tok) {
   (void)p;
   Ast *ident = ast_ident(tok.start, tok.length);
+  ident->line = tok.line;
 
   return ident;
 }
 
-Ast *parse_if(Parser *p) {
+Ast *parse_if(Parser *p, Token tok) {
   /*
    * if (cond) {
    *  body
@@ -202,7 +215,7 @@ Ast *parse_if(Parser *p) {
   lex_expect_next(p->lexer, TOKEN_RPAREN);
   lex_expect_next(p->lexer, TOKEN_LCURLY);
 
-  Ast *body = parse_block(p);
+  Ast *then = parse_block(p);
 
   lex_expect_next(p->lexer, TOKEN_RCURLY);
   Token next_tok = lex_peek(p->lexer);
@@ -219,11 +232,13 @@ Ast *parse_if(Parser *p) {
     lex_expect_next(p->lexer, TOKEN_RCURLY);
   }
 
-  Ast *ast = ast_if(cond, body, els);
+  Ast *ast = ast_if(cond, then, els);
+  ast->line = tok.line;
+
   return ast;
 }
 
-Ast *parse_while(Parser *p) {
+Ast *parse_while(Parser *p, Token tok) {
   /*
    * while (cond) {
    *  body
@@ -242,21 +257,25 @@ Ast *parse_while(Parser *p) {
   lex_expect_next(p->lexer, TOKEN_RCURLY);
 
   Ast *ast = ast_while(cond, body);
+  ast->line = tok.line;
+
   return ast;
 }
 
-Ast *parse_for(Parser *p) {
+Ast *parse_for(Parser *p, Token tok) {
   /*
    * for (init; cond; step) {
    *  body
    * }
    */
 
+  int line = tok.line;
+
   lex_expect_next(p->lexer, TOKEN_LPAREN);
   lex_expect_range(p->lexer, T_CHAR8, T_VOID); // expect it to be a type
-  Token t = lex_next(p->lexer);
+  tok = lex_next(p->lexer);
 
-  Ast *init = parse_builtin_type(p, t);
+  Ast *init = parse_builtin_type(p, tok);
 
   Ast *cond = parse_expr(p);
 
@@ -272,6 +291,8 @@ Ast *parse_for(Parser *p) {
   lex_expect_next(p->lexer, TOKEN_RCURLY);
 
   Ast *ast = ast_for(init, cond, step, body);
+  ast->line = line;
+
   return ast;
 }
 
@@ -281,11 +302,21 @@ Ast *parse_switch(Parser *p, Token tok) {
   return NULL;
 }
 
+Ast *parse_return(Parser *p, Token tok) {
+  Ast *expr = parse_expr(p);
+
+  lex_expect_next(p->lexer, TOKEN_SEMICOLON);
+
+  Ast *return_stmt = ast_return(expr);
+  return_stmt->line = tok.line;
+
+  return return_stmt;
+}
+
 Ast **parse_function_params(Parser *p, int *param_count) {
   /*
    * e.g.
    * type func(type param1; type param2;) { ...; } (with body)
-   * type func(type param1;); (without body)
    * type func(type param1 = 100;) { ...; } (declaring default values)
    */
 
@@ -366,12 +397,24 @@ Ast *parse_primary(Parser *p) {
     return parse_i64(t);
   case TOKEN_FLOAT:
     return parse_f64(t);
-  case TOKEN_STRING:
-    return ast_string(t.start, t.length);
-  case KW_TRUE:
-    return ast_bool(true);
-  case KW_FALSE:
-    return ast_bool(false);
+  case TOKEN_STRING: {
+    Ast *str = ast_string(t.start, t.length);
+    str->line = t.line;
+
+    return str;
+  }
+  case KW_TRUE: {
+    Ast *tru = ast_bool(true);
+    tru->line = t.line;
+
+    return tru;
+  }
+  case KW_FALSE: {
+    Ast *fals = ast_bool(false);
+    fals->line = t.line;
+
+    return fals;
+  }
   case TOKEN_IDENTIFIER:
     return parse_ident(p, t);
   case TOKEN_LPAREN: {
@@ -396,7 +439,10 @@ Ast *parse_prefix(Parser *p) {
     lex_next(p->lexer);
     AstUnOp op = ast_toktype_to_unop(t.type);
     Ast *rhs = parse_prefix(p);
-    return ast_unop(op, rhs);
+    Ast *unop = ast_unop(op, rhs);
+    unop->line = t.line;
+
+    return unop;
   }
 
   return parse_primary(p);
@@ -412,6 +458,8 @@ Ast *parse_postfix(Parser *p, Ast *left) {
       Ast **args = parse_function_args(p, &arg_count);
       lex_expect_next(p->lexer, TOKEN_RPAREN);
       left = ast_funccall(left, args, arg_count);
+      left->line = t.line;
+
       break;
     }
 
@@ -420,6 +468,8 @@ Ast *parse_postfix(Parser *p, Ast *left) {
       AstUnOp op =
           (t.type == TOKEN_PLUS_PLUS) ? AST_UNOP_POST_INC : AST_UNOP_POST_DEC;
       left = ast_unop(op, left);
+      left->line = t.line;
+
       continue;
     }
 
@@ -536,6 +586,8 @@ Ast *parse_expr_bp(Parser *p, int min_bp) {
 
     int is_err = 0;
     left = ast_binop(op, left, right, &is_err);
+    left->line = t.line;
+
     if (is_err) {
       error(0, "Invalid binary operation in expression");
       return NULL;

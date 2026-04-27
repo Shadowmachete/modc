@@ -49,6 +49,3 @@ compile_commands.json
 
 # cache
 .cache
-
-# to be removed
-symtab.*
