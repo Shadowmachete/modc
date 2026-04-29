@@ -9,9 +9,6 @@
 #include "types.h"
 #include "utils.h"
 
-// TODO: consider if we want to change lexer to using an arena for tokens
-// and for its own allocation
-
 void lex_init(Lexer *l, const char *src) {
   l->pos = 0;
   l->line = 1;
@@ -85,6 +82,22 @@ again:
       tok.type = TOKEN_ASTERISK_ASSIGN;
     } else {
       tok.type = TOKEN_ASTERISK;
+    }
+    break;
+  case '%':
+    if (*(c + 1) == '=') {
+      c++;
+      tok.type = TOKEN_MOD_ASSIGN;
+    } else {
+      tok.type = TOKEN_MOD;
+    }
+    break;
+  case '^':
+    if (*(c + 1) == '=') {
+      c++;
+      tok.type = TOKEN_XOR_ASSIGN;
+    } else {
+      tok.type = TOKEN_XOR;
     }
     break;
   case '/':
@@ -279,8 +292,13 @@ Token lex_string(Lexer *l, char *c, const char *start) {
 
   c++;
 
-  while (*c != starting_char) {
+  while (*c != starting_char && *c != '\0') {
     c++;
+  }
+
+  if (*c == '\0') {
+    error(l->line, "String literal is never terminated");
+    exit(1);
   }
 
   size_t len = c - start - 1;

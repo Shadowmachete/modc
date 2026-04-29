@@ -141,6 +141,8 @@ void type_check(Ast *ast, Scope *current_scope) {
     }
   } break;
   case AST_FUNC: {
+    // TODO: check that parameters with initializers are placed after those
+    // without, i.e. default params must be after positional params
     type_check(ast->func_decl.body, NULL);
     break;
   }
@@ -167,13 +169,8 @@ void type_check(Ast *ast, Scope *current_scope) {
       return;
 
     /*
-     * mul, div, add, sub, log and, log or, comparison takes int/float for both
-     * mod, shl, shr, bit and, bit xor, bit or take int for both
-     * same for the ones with assignment
+     * Handle other types:
      *
-     * bool only defines && and ||
-     *
-     * other types:
      * all defined in overload table?
      */
 
@@ -181,10 +178,7 @@ void type_check(Ast *ast, Scope *current_scope) {
     String *left_type_str = modctype_to_string(ast->binary.left->type);
     String *right_type_str = modctype_to_string(ast->binary.right->type);
 
-    if (left->type->variant != TYPE_INT && left->type->variant != TYPE_FLOAT &&
-        left->type->variant != TYPE_BOOL && right->type->variant != TYPE_INT &&
-        right->type->variant != TYPE_FLOAT &&
-        right->type->variant != TYPE_BOOL) {
+    if (!t_is_numeric(left->type) || !t_is_numeric(right->type)) {
       // check overloads table if operation is defined
 
       if (ast->binary.binop == AST_BIN_OP_ASSIGN) {
@@ -193,7 +187,7 @@ void type_check(Ast *ast, Scope *current_scope) {
                 (int)right_type_str->len, right_type_str->data,
                 (int)left_type_str->len, left_type_str->data);
         }
-        ast->type = void_type;
+        ast->type = left->type;
         return;
       }
 
@@ -205,6 +199,12 @@ void type_check(Ast *ast, Scope *current_scope) {
             right_type_str->data);
       return;
     }
+
+    /*
+     * Handle booleans
+     *
+     * bool only defines && and ||
+     */
 
     b8 left_is_bool = (left->type->variant == TYPE_BOOL);
     b8 right_is_bool = (right->type->variant == TYPE_BOOL);
@@ -222,9 +222,24 @@ void type_check(Ast *ast, Scope *current_scope) {
       return;
     }
 
+    /*
+     * TODO: Handle pointers
+     */
+
+    /*
+     * Handle floats and integers
+     *
+     * mul, div, add, sub, log and, log or, comparison takes int/float for both
+     * mod, shl, shr, bit and, bit xor, bit or take int for both
+     * same for the ones with assignment
+     *
+     */
+
     switch (ast->binary.binop) {
     case AST_BIN_OP_ASSIGN: {
-
+      // TODO: type check rhs type can fit in lhs
+      // check that lhs is a var
+      ast->type = left->type;
     } break;
     case AST_BIN_OP_MUL:
     case AST_BIN_OP_DIV:
@@ -236,6 +251,8 @@ void type_check(Ast *ast, Scope *current_scope) {
     case AST_BIN_OP_SUB_ASSIGN:
     case AST_BIN_OP_MUL_ASSIGN:
     case AST_BIN_OP_DIV_ASSIGN: {
+      // TODO: type check whether the combined_type can be put into the original
+      // check that lhs is a var
       ModCType *combined_type = make_combined_type(ast);
       (void)combined_type; // unused
       ast->type = void_type;
@@ -277,6 +294,11 @@ void type_check(Ast *ast, Scope *current_scope) {
               (int)binop_str->len, binop_str->data);
         return;
       }
+
+      // TODO: check that lhs is a var
+
+      ModCType *combined_type = make_combined_type(ast);
+      (void)combined_type; // unused
       ast->type = void_type;
     } break;
     default:
@@ -293,6 +315,9 @@ void type_check(Ast *ast, Scope *current_scope) {
     case AST_UNOP_DEREF: {
       if (ast->unary.expr->type->variant != TYPE_POINTER) {
         error(ast->line, "Attempt to deference a non-pointer type");
+
+        ast->type = void_type;
+        return;
       }
 
       ast->type = ast->unary.expr->type->pointer.base;
@@ -301,10 +326,34 @@ void type_check(Ast *ast, Scope *current_scope) {
     case AST_UNOP_MINUS: {
       if (ast->unary.expr->type->is_signed == false) {
         ast->type = signed_type_wider_than(ast->unary.expr->type->size);
+      } else {
+        ast->type = ast->unary.expr->type;
       }
     } break;
     case AST_UNOP_LOG_NOT: {
       ast->type = bool_type;
+    } break;
+    case AST_UNOP_POST_DEC:
+    case AST_UNOP_PRE_DEC: {
+      if (!t_is_numeric(ast->unary.expr->type)) {
+        String *type_str = modctype_to_string(ast->unary.expr->type);
+        error(ast->line, "Attempt to decrement non-numeric type %.*s",
+              (int)type_str->len, type_str->data);
+        return;
+      }
+
+      ast->type = ast->unary.expr->type;
+    } break;
+    case AST_UNOP_POST_INC:
+    case AST_UNOP_PRE_INC: {
+      if (!t_is_numeric(ast->unary.expr->type)) {
+        String *type_str = modctype_to_string(ast->unary.expr->type);
+        error(ast->line, "Attempt to increment non-numeric type %.*s",
+              (int)type_str->len, type_str->data);
+        return;
+      }
+
+      ast->type = ast->unary.expr->type;
     } break;
     default:
       ast->type = ast->unary.expr->type;
@@ -312,6 +361,11 @@ void type_check(Ast *ast, Scope *current_scope) {
     }
   } break;
   case AST_VAR: {
+    if (ast->var_decl.initializer == NULL) {
+      ast->type = void_type;
+      break;
+    }
+
     type_check(ast->var_decl.initializer, current_scope);
 
     String *var_type_str = modctype_to_string(ast->var_decl.type);
@@ -330,8 +384,9 @@ void type_check(Ast *ast, Scope *current_scope) {
     ast->type = void_type;
   } break;
   case AST_FUNCALL: {
-    // check that all the parameters are declared and the types match the types
-    // of the function. update the ast->type to the return type
+    //  TODO: check that all the parameters are declared and the types match the
+    // types of the function. update the ast->type to the return type
+    // check number of parameters line up
   } break;
   default:
     break;

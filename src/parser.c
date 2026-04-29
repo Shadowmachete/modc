@@ -34,7 +34,7 @@ void parse(Parser *p, const char *src) {
 }
 
 Ast *parse_token(Parser *p, Token t) {
-  // TODO: process each token and produce the AST
+  // TODO: implement more keywords for parsing into ast
 
   switch (t.type) {
   case T_CHAR8:
@@ -55,7 +55,7 @@ Ast *parse_token(Parser *p, Token t) {
   case T_VOID:
     lex_next(p->lexer);
     return parse_builtin_type(p, t);
-  case T_STRUCT: // TODO: implement
+  case T_STRUCT:
     return NULL;
   case KW_IF:
     lex_next(p->lexer);
@@ -119,21 +119,6 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
 
   tok = lex_peek(p->lexer);
 
-  /*
-   * TODO: i think this should only trigger type cast
-   * from within the check for TOKEN_LPAREN
-   * to ensure that type)[ident];
-   * doesnt get registered as a type cast
-   */
-
-  // if (tok.type == TOKEN_RPAREN) {
-  // This indicates a type cast?
-  // (type) [expr]
-  // Ast *expr = parse_expr();
-  // Ast *ast = ast_cast(); ??
-  // return ast;
-  // }
-
   lex_expect(p->lexer, TOKEN_IDENTIFIER);
   tok = lex_next(p->lexer);
 
@@ -145,7 +130,7 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
 
   if (tok.type == TOKEN_LPAREN) {
     // function declaration
-    // [type] [ident]([params])
+    // [type] [ident]([params]) [for type]
 
     lex_next(p->lexer);
 
@@ -156,6 +141,11 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
 
     // no forward declarations needed, only full declaration with body since
     // compiler will traverse the ast multiple times
+
+    // TODO: in the future, allowing for struct / class methods check if the
+    // "for" keyword comes after the function signature followed by a type below
+    // the body of the function
+    // inspired by Rust's impl for syntax
 
     lex_expect_next(p->lexer, TOKEN_LCURLY);
 
@@ -484,10 +474,10 @@ Ast *parse_postfix(Parser *p, Ast *left) {
  * unary (prefix)      handled in parse_prefix()
  * multiplicative      * / %
  * additive            + -
+ * shift               << >>
  * bitwise AND         &
  * bitwise XOR         ^
  * bitwise OR          |
- * shift               << >>
  * relational          < <= > >=
  * equality            == !=
  * logical AND         &&
@@ -543,15 +533,15 @@ static b8 infix_binding_power(TokenType t, int *lbp, int *rbp) {
     *lbp = 80;
     *rbp = 81;
     return 1;
-  case TOKEN_PLUS:
-  case TOKEN_MINUS:
-    *lbp = 90;
-    *rbp = 91;
-    return 1;
   case TOKEN_LESS_LESS:
   case TOKEN_GREATER_GREATER:
     *lbp = 85;
     *rbp = 86;
+    return 1;
+  case TOKEN_PLUS:
+  case TOKEN_MINUS:
+    *lbp = 90;
+    *rbp = 91;
     return 1;
   case TOKEN_ASTERISK:
   case TOKEN_SLASH:

@@ -154,9 +154,9 @@ AstBinOp ast_toktype_to_binop(TokenType type) {
   case TOKEN_OR:
     return AST_BIN_OP_BIT_OR;
   case TOKEN_AND_AND:
-    return AST_BIN_OP_BIT_AND;
+    return AST_BIN_OP_LOG_AND;
   case TOKEN_OR_OR:
-    return AST_BIN_OP_BIT_OR;
+    return AST_BIN_OP_LOG_OR;
   case TOKEN_ASSIGN:
     return AST_BIN_OP_ASSIGN;
   case TOKEN_PLUS_ASSIGN:
@@ -294,7 +294,7 @@ Ast *ast_string(const char *str, size_t len) {
   ast->variant = AST_STRING;
   ast->string.value = str_dup_raw(str, len);
 
-  ast->type = make_array_type(char_8_type, len);
+  ast->type = make_array_type(char_8_type, len + 1);
   return ast;
 }
 
@@ -495,7 +495,7 @@ void ast_print(Ast *ast, int depth) {
     break;
   case AST_IDENTIFIER:
     print_depth(depth);
-    print_string(ast->string.value);
+    print_string(ast->ident.name);
     break;
   case AST_UNOP:
     if (ast->unary.unop == AST_UNOP_POST_INC ||

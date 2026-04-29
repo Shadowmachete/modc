@@ -133,8 +133,8 @@ int main(int argc, char *argv[]) {
 
   free(source);
   parser_free(parser);
-  global_arena_release();
-  ast_memory_release();
   scope_memory_release(global_scope);
+  ast_memory_release();
   modctype_memory_release();
+  global_arena_release();
 }

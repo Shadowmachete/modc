@@ -88,6 +88,7 @@ ModCType *make_pointer_type(ModCType *base, int ptr_depth);
 ModCType *make_array_type(ModCType *base, int len);
 ModCType *make_function_type(ModCType *ret_type, Ast **params, int param_count);
 ModCType *signed_type_wider_than(size_t size);
+b8 t_is_numeric(ModCType *t);
 ModCType *make_combined_type(Ast *node);
 
 #endif // !MODC_TYPES_H

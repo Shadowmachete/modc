@@ -77,11 +77,11 @@ ModCType *int_64_type = &(ModCType){
     .variant = TYPE_INT, .size = 8, .is_signed = true, .builtin = T_INT64};
 
 ModCType *float_16_type = &(ModCType){
-    .variant = TYPE_FLOAT, .size = 2, .is_signed = false, .builtin = T_FLOAT16};
+    .variant = TYPE_FLOAT, .size = 2, .is_signed = true, .builtin = T_FLOAT16};
 ModCType *float_32_type = &(ModCType){
-    .variant = TYPE_FLOAT, .size = 4, .is_signed = false, .builtin = T_FLOAT32};
+    .variant = TYPE_FLOAT, .size = 4, .is_signed = true, .builtin = T_FLOAT32};
 ModCType *float_64_type = &(ModCType){
-    .variant = TYPE_FLOAT, .size = 8, .is_signed = false, .builtin = T_FLOAT64};
+    .variant = TYPE_FLOAT, .size = 8, .is_signed = true, .builtin = T_FLOAT64};
 
 ModCType *bool_type = &(ModCType){
     .variant = TYPE_BOOL, .size = 1, .is_signed = false, .builtin = T_BOOL};
@@ -224,6 +224,11 @@ ModCType *signed_type_wider_than(size_t size) {
   }
 }
 
+b8 t_is_numeric(ModCType *t) {
+  return t->variant == TYPE_INT || t->variant == TYPE_FLOAT ||
+         t->variant == TYPE_BOOL || t->variant == TYPE_POINTER;
+}
+
 ModCType *common_numeric_type(ModCType *a, ModCType *b, int *cast_lhs,
                               int *cast_rhs) {
   *cast_lhs = 0;
@@ -233,8 +238,7 @@ ModCType *common_numeric_type(ModCType *a, ModCType *b, int *cast_lhs,
     return a;
 
   // check if non-numeric
-  if (a->variant != TYPE_INT || b->variant != TYPE_INT ||
-      a->variant != TYPE_FLOAT || b->variant != TYPE_FLOAT)
+  if (!t_is_numeric(a) || !t_is_numeric(b))
     return NULL;
 
   b8 a_is_float = (a->variant == TYPE_FLOAT);
