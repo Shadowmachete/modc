@@ -25,6 +25,8 @@ struct ModCType {
     TYPE_FUNCTION,
 
     TYPE_STRUCT,
+
+    TYPE_ERROR,
   } variant;
 
   size_t size;
@@ -77,6 +79,7 @@ extern ModCType *float_32_type;
 extern ModCType *float_64_type;
 extern ModCType *bool_type;
 extern ModCType *void_type;
+extern ModCType *error_type;
 
 void modctype_memory_init(void);
 void modctype_memory_release(void);
@@ -89,6 +92,7 @@ ModCType *make_array_type(ModCType *base, int len);
 ModCType *make_function_type(ModCType *ret_type, Ast **params, int param_count);
 ModCType *signed_type_wider_than(size_t size);
 b8 t_is_numeric(ModCType *t);
+b8 types_can_fit(ModCType *type_a, ModCType *type_b);
 ModCType *make_combined_type(Ast *node);
 
 #endif // !MODC_TYPES_H

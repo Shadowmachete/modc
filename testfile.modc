@@ -1,5 +1,5 @@
-float_16 main() {
-  float_16 x = 100.0;
+float_16 main(int_8 i; float_16 y = 100.0;) {
+  float_16 x = 100.0 + 50;
 
   x += 50;
 
@@ -15,5 +15,11 @@ float_16 main() {
     x -= 1;
   }
 
+  x += sum(i, y = 1.0);
+
   return x;
+}
+
+float_16 sum(int_8 x; float_16 y = 1.0;) {
+  return x + y;
 }

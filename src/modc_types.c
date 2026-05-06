@@ -7,6 +7,8 @@
 #include "str.h"
 #include "utils.h"
 
+#define STR_FMT_UNWRAP(str) (int)(str)->len, (str)->data
+
 static Arena modctype_arena;
 static int modctype_arena_init = 0;
 
@@ -87,6 +89,8 @@ ModCType *bool_type = &(ModCType){
     .variant = TYPE_BOOL, .size = 1, .is_signed = false, .builtin = T_BOOL};
 ModCType *void_type = &(ModCType){
     .variant = TYPE_VOID, .size = 0, .is_signed = false, .builtin = T_VOID};
+ModCType *error_type =
+    &(ModCType){.variant = TYPE_ERROR, .size = 0, .is_signed = false};
 
 ModCType *type_to_builtin(TokenType type) {
   switch (type) {
@@ -136,7 +140,7 @@ String *modctype_to_string(ModCType *type) {
   case TYPE_ARRAY: {
     String *element_str = modctype_to_string(type->array.element);
     String *ret = str_new();
-    str_catprintf(ret, "[%.*s, %d]", (int)element_str->len, element_str->data,
+    str_catprintf(ret, "[%.*s, %d]", STR_FMT_UNWRAP(element_str),
                   type->array.length);
     return ret;
   }
@@ -292,10 +296,23 @@ ModCType *make_combined_type(Ast *node) {
     return NULL;
   }
 
-  if (cast_lhs)
+  if (cast_lhs) {
+    int line = node->binary.left->line;
     node->binary.left = ast_cast(node->binary.left, result);
-  if (cast_rhs)
+    node->binary.left->line = line;
+  }
+  if (cast_rhs) {
+    int line = node->binary.right->line;
     node->binary.right = ast_cast(node->binary.right, result);
+    node->binary.right->line = line;
+  }
 
   return result;
+}
+
+b8 types_can_fit(ModCType *type_a, ModCType *type_b) {
+  return type_a == type_b ||
+         (type_a->variant == TYPE_INT && type_b->variant == TYPE_INT) ||
+         (type_a->variant == TYPE_FLOAT && type_b->variant == TYPE_FLOAT) ||
+         (type_a->variant == TYPE_CHAR && type_b->variant == TYPE_CHAR);
 }

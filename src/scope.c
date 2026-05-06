@@ -6,12 +6,13 @@
 #include "arena.h"
 #include "ast.h"
 #include "hash_map.h"
-#include "modc_types.h"
 #include "scope.h"
 #include "str.h"
 #include "types.h"
 #include "utils.h"
 #include "vec.h"
+
+#define STR_FMT_UNWRAP(str) (int)(str)->len, (str)->data
 
 static int vec_scope_equality(void *s1, void *s2) {
   return str_eq(((Scope *)s1)->name, ((Scope *)s2)->name);
@@ -114,15 +115,6 @@ Symbol *symbol_create(void) {
   return symbol;
 }
 
-Scope *make_global_scope(void) {
-  Scope *scope = scope_create();
-
-  scope->variant = SCOPE_GLOBAL;
-  scope->name = str_dup_raw("global", 6);
-
-  return scope;
-}
-
 Symbol *find_symbol(Scope *current_scope, String *symbol) {
   if (hashmap_has(current_scope->symbols, symbol))
     return hashmap_get(current_scope->symbols, symbol);
@@ -133,260 +125,106 @@ Symbol *find_symbol(Scope *current_scope, String *symbol) {
   return find_symbol(current_scope->parent, symbol);
 }
 
-void type_check(Ast *ast, Scope *current_scope) {
+Scope *make_global_scope(void) {
+  Scope *scope = scope_create();
+
+  scope->variant = SCOPE_GLOBAL;
+  scope->name = str_dup_raw("global", 6);
+
+  return scope;
+}
+
+Scope *make_block_scope(Scope *current_scope) {
+  Scope *new_scope = scope_create();
+  new_scope->parent = current_scope;
+  new_scope->variant = SCOPE_BLOCK;
+  new_scope->name = str_new();
+  str_catprintf(new_scope->name, "%.*s_%d", STR_FMT_UNWRAP(current_scope->name),
+                current_scope->children->size);
+  vec_push(current_scope->children, new_scope);
+
+  return new_scope;
+}
+
+void populate_scopes(Ast *ast, Scope *current_scope) {
   switch (ast->variant) {
   case AST_BLOCK: {
+    if (ast->block.scope == NULL) {
+      ast->block.scope = make_block_scope(current_scope);
+    }
+
     for (size_t i = 0; i < ast->block.stmt_count; i++) {
-      type_check(ast->block.statements[i], ast->block.scope);
+      populate_scopes(ast->block.statements[i], ast->block.scope);
     }
   } break;
   case AST_FUNC: {
-    // TODO: check that parameters with initializers are placed after those
-    // without, i.e. default params must be after positional params
-    type_check(ast->func_decl.body, NULL);
-    break;
-  }
-  case AST_IDENTIFIER: {
-    Symbol *sym = find_symbol(current_scope, ast->ident.name);
-
-    if (sym == NULL) {
-      error(ast->line, "Identifier \"%.*s\" used before declaration",
-            (int)ast->ident.name->len, ast->ident.name->data);
-      return;
-    }
-
-    ast->type = sym->type;
-  } break;
-  case AST_BINOP: {
-    Ast *left = ast->binary.left;
-    Ast *right = ast->binary.right;
-    type_check(left, current_scope);
-    type_check(right, current_scope);
-
-    if (left->type == NULL)
-      return;
-    if (right->type == NULL)
-      return;
-
-    /*
-     * Handle other types:
-     *
-     * all defined in overload table?
-     */
-
-    String *binop_str = ast_binop_to_string(ast->binary.binop);
-    String *left_type_str = modctype_to_string(ast->binary.left->type);
-    String *right_type_str = modctype_to_string(ast->binary.right->type);
-
-    if (!t_is_numeric(left->type) || !t_is_numeric(right->type)) {
-      // check overloads table if operation is defined
-
-      if (ast->binary.binop == AST_BIN_OP_ASSIGN) {
-        if (left->type != right->type) {
-          error(ast->line, "Cannot assign value of type %.*s to type %.*s",
-                (int)right_type_str->len, right_type_str->data,
-                (int)left_type_str->len, left_type_str->data);
-        }
-        ast->type = left->type;
-        return;
-      }
-
+    if (hashmap_has(current_scope->symbols, ast->func_decl.name)) {
       error(ast->line,
-            "Binary operation \"%.*s\" is not defined between types %.*s and "
-            "%.*s",
-            (int)binop_str->len, binop_str->data, (int)left_type_str->len,
-            left_type_str->data, (int)right_type_str->len,
-            right_type_str->data);
+            "Cannot redeclare function %.*s() on line %d, function has already "
+            "been declared on line %d",
+            STR_FMT_UNWRAP(ast->func_decl.name),
+            ((Symbol *)hashmap_get(current_scope->symbols, ast->func_decl.name))
+                ->decl->line);
       return;
     }
 
-    /*
-     * Handle booleans
-     *
-     * bool only defines && and ||
-     */
+    Symbol *func_symbol = symbol_create();
+    func_symbol->name = ast->func_decl.name;
+    func_symbol->variant = SYMBOL_FUNCTION;
+    func_symbol->scope = current_scope;
+    func_symbol->type = ast->func_decl.func_type;
+    func_symbol->decl = ast;
+    hashmap_add(current_scope->symbols, func_symbol->name, func_symbol);
 
-    b8 left_is_bool = (left->type->variant == TYPE_BOOL);
-    b8 right_is_bool = (right->type->variant == TYPE_BOOL);
+    Scope *func_scope = scope_create();
+    func_scope->parent = current_scope;
+    func_scope->variant = SCOPE_FUNCTION;
+    func_scope->name = ast->func_decl.name;
+    vec_push(current_scope->children, func_scope);
 
-    if (left_is_bool || right_is_bool) {
-      if (ast->binary.binop != AST_BIN_OP_LOG_AND &&
-          ast->binary.binop != AST_BIN_OP_LOG_OR) {
-        error(ast->line,
-              "Binary operation \"%.*s\" is not defined for type boolean",
-              (int)binop_str->len, binop_str->data);
-        return;
-      }
-
-      ast->type = bool_type;
-      return;
+    for (size_t i = 0; i < ast->func_decl.param_count; i++) {
+      populate_scopes(ast->func_decl.params[i], func_scope);
     }
 
-    /*
-     * TODO: Handle pointers
-     */
+    ast->func_decl.body->block.scope = func_scope;
 
-    /*
-     * Handle floats and integers
-     *
-     * mul, div, add, sub, log and, log or, comparison takes int/float for both
-     * mod, shl, shr, bit and, bit xor, bit or take int for both
-     * same for the ones with assignment
-     *
-     */
-
-    switch (ast->binary.binop) {
-    case AST_BIN_OP_ASSIGN: {
-      // TODO: type check rhs type can fit in lhs
-      // check that lhs is a var
-      ast->type = left->type;
-    } break;
-    case AST_BIN_OP_MUL:
-    case AST_BIN_OP_DIV:
-    case AST_BIN_OP_ADD:
-    case AST_BIN_OP_SUB: {
-      ast->type = make_combined_type(ast);
-    } break;
-    case AST_BIN_OP_ADD_ASSIGN:
-    case AST_BIN_OP_SUB_ASSIGN:
-    case AST_BIN_OP_MUL_ASSIGN:
-    case AST_BIN_OP_DIV_ASSIGN: {
-      // TODO: type check whether the combined_type can be put into the original
-      // check that lhs is a var
-      ModCType *combined_type = make_combined_type(ast);
-      (void)combined_type; // unused
-      ast->type = void_type;
-    } break;
-    case AST_BIN_OP_LOG_AND:
-    case AST_BIN_OP_LOG_OR:
-    case AST_BIN_OP_LT:
-    case AST_BIN_OP_LE:
-    case AST_BIN_OP_GT:
-    case AST_BIN_OP_GE:
-    case AST_BIN_OP_EQ:
-    case AST_BIN_OP_NE: {
-      ast->type = bool_type;
-    } break;
-    case AST_BIN_OP_MOD:
-    case AST_BIN_OP_SHL:
-    case AST_BIN_OP_SHR:
-    case AST_BIN_OP_BIT_AND:
-    case AST_BIN_OP_BIT_XOR:
-    case AST_BIN_OP_BIT_OR: {
-      if (left->type->variant == TYPE_FLOAT ||
-          right->type->variant == TYPE_FLOAT) {
-        error(ast->line, "Binary operation %.*s is not defined for type float",
-              (int)binop_str->len, binop_str->data);
-        return;
-      }
-
-      ast->type = make_combined_type(ast);
-    } break;
-    case AST_BIN_OP_MOD_ASSIGN:
-    case AST_BIN_OP_SHL_ASSIGN:
-    case AST_BIN_OP_SHR_ASSIGN:
-    case AST_BIN_OP_AND_ASSIGN:
-    case AST_BIN_OP_XOR_ASSIGN:
-    case AST_BIN_OP_OR_ASSIGN: {
-      if (left->type->variant == TYPE_FLOAT ||
-          right->type->variant == TYPE_FLOAT) {
-        error(ast->line, "Binary operation %.*s is not defined for type float",
-              (int)binop_str->len, binop_str->data);
-        return;
-      }
-
-      // TODO: check that lhs is a var
-
-      ModCType *combined_type = make_combined_type(ast);
-      (void)combined_type; // unused
-      ast->type = void_type;
-    } break;
-    default:
-      break;
-    }
-  } break;
-  case AST_UNOP: {
-    type_check(ast->unary.expr, current_scope);
-
-    switch (ast->unary.unop) {
-    case AST_UNOP_ADDR_OF: {
-      ast->type = make_pointer_type(ast->unary.expr->type, 1);
-    } break;
-    case AST_UNOP_DEREF: {
-      if (ast->unary.expr->type->variant != TYPE_POINTER) {
-        error(ast->line, "Attempt to deference a non-pointer type");
-
-        ast->type = void_type;
-        return;
-      }
-
-      ast->type = ast->unary.expr->type->pointer.base;
-    } break;
-    case AST_UNOP_BIT_NOT:
-    case AST_UNOP_MINUS: {
-      if (ast->unary.expr->type->is_signed == false) {
-        ast->type = signed_type_wider_than(ast->unary.expr->type->size);
-      } else {
-        ast->type = ast->unary.expr->type;
-      }
-    } break;
-    case AST_UNOP_LOG_NOT: {
-      ast->type = bool_type;
-    } break;
-    case AST_UNOP_POST_DEC:
-    case AST_UNOP_PRE_DEC: {
-      if (!t_is_numeric(ast->unary.expr->type)) {
-        String *type_str = modctype_to_string(ast->unary.expr->type);
-        error(ast->line, "Attempt to decrement non-numeric type %.*s",
-              (int)type_str->len, type_str->data);
-        return;
-      }
-
-      ast->type = ast->unary.expr->type;
-    } break;
-    case AST_UNOP_POST_INC:
-    case AST_UNOP_PRE_INC: {
-      if (!t_is_numeric(ast->unary.expr->type)) {
-        String *type_str = modctype_to_string(ast->unary.expr->type);
-        error(ast->line, "Attempt to increment non-numeric type %.*s",
-              (int)type_str->len, type_str->data);
-        return;
-      }
-
-      ast->type = ast->unary.expr->type;
-    } break;
-    default:
-      ast->type = ast->unary.expr->type;
-      break;
-    }
+    populate_scopes(ast->func_decl.body, current_scope);
   } break;
   case AST_VAR: {
-    if (ast->var_decl.initializer == NULL) {
-      ast->type = void_type;
-      break;
-    }
-
-    type_check(ast->var_decl.initializer, current_scope);
-
-    String *var_type_str = modctype_to_string(ast->var_decl.type);
-    String *init_type_str = modctype_to_string(ast->var_decl.initializer->type);
-
-    if (ast->var_decl.type->variant !=
-        ast->var_decl.initializer->type->variant) {
+    if (hashmap_has(current_scope->symbols, ast->var_decl.name)) {
       error(ast->line,
-            "Attempted to assign expression of type %.*s to variable with "
-            "defined type %.*s",
-            (int)init_type_str->len, init_type_str->data,
-            (int)var_type_str->len, var_type_str->data);
+            "Cannot redeclare variable %.*s on line %d, variable has already "
+            "been declared in the same scope on line %d",
+            STR_FMT_UNWRAP(ast->var_decl.name),
+            ((Symbol *)hashmap_get(current_scope->symbols, ast->var_decl.name))
+                ->decl->line);
       return;
     }
 
-    ast->type = void_type;
+    Symbol *var_symbol = symbol_create();
+    var_symbol->name = ast->var_decl.name;
+    var_symbol->variant = SYMBOL_VARIABLE;
+    var_symbol->scope = current_scope;
+    var_symbol->type = ast->var_decl.type;
+    var_symbol->decl = ast;
+    hashmap_add(current_scope->symbols, var_symbol->name, var_symbol);
   } break;
-  case AST_FUNCALL: {
-    //  TODO: check that all the parameters are declared and the types match the
-    // types of the function. update the ast->type to the return type
-    // check number of parameters line up
+  case AST_IF: {
+    populate_scopes(ast->if_stmt.then, current_scope);
+
+    if (ast->if_stmt.els != NULL) {
+      populate_scopes(ast->if_stmt.els, current_scope);
+    }
+  } break;
+  case AST_WHILE: {
+    populate_scopes(ast->while_stmt.whilebody, current_scope);
+  } break;
+  case AST_FOR: {
+    Scope *for_scope = make_block_scope(current_scope);
+    ast->for_stmt.forbody->block.scope = for_scope;
+
+    populate_scopes(ast->for_stmt.forinit, for_scope);
+    populate_scopes(ast->for_stmt.forbody, current_scope);
   } break;
   default:
     break;

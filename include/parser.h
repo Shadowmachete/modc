@@ -31,7 +31,9 @@ Ast *parse_switch(Parser *p, Token tok);
 Ast *parse_return(Parser *p, Token tok);
 
 Ast **parse_function_params(Parser *p, int *param_count);
+Ast *parse_param(Parser *p, Token tok);
 Ast **parse_function_args(Parser *p, int *arg_count);
+Ast *parse_arg(Parser *p, Token tok);
 
 Ast *parse_block(Parser *p);
 Ast *parse_expr(Parser *p);

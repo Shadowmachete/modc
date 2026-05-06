@@ -325,17 +325,6 @@ Ast *ast_binop(AstBinOp op, Ast *left, Ast *right, int *_is_err) {
   ast->binary.left = left;
   ast->binary.right = right;
 
-  /* if (op == AST_BIN_OP_EQ || op == AST_BIN_OP_NE || op == AST_BIN_OP_LE || */
-  /*     op == AST_BIN_OP_LT || op == AST_BIN_OP_GE || op == AST_BIN_OP_GT) { */
-  /*   ast->type = bool_type; */
-  /* } else { */
-  /*   ast->type = make_combined_type(op, ast); */
-  /*   if (ast->type == NULL) { */
-  /*     *_is_err = 1; */
-  /*     return ast; */
-  /*   } */
-  /* } */
-
   *_is_err = 0;
 
   return ast;
@@ -374,6 +363,8 @@ Ast *ast_funccall(Ast *callee, Ast **args, size_t arg_count) {
   ast->func_call.callee = callee;
   ast->func_call.args = args;
   ast->func_call.arg_count = arg_count;
+  ast->func_call.values = NULL;
+  ast->func_call.val_count = 0;
 
   return ast;
 }
@@ -458,6 +449,7 @@ Ast *ast_cast(Ast *expr, ModCType *type) {
   Ast *ast = ast_create();
 
   ast->variant = AST_CAST;
+  ast->type = type;
   ast->type_cast.type = type;
   ast->type_cast.expr = expr;
 
@@ -587,7 +579,9 @@ void ast_print(Ast *ast, int depth) {
     break;
   case AST_RETURN:
     printf("return\n");
-    ast_print(ast->return_stmt.expr, depth);
+    if (ast->return_stmt.expr != NULL) {
+      ast_print(ast->return_stmt.expr, depth);
+    }
     break;
   case AST_BREAK:
   case AST_CONTINUE:

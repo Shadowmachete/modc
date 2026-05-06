@@ -186,6 +186,8 @@ struct Ast {
       Ast *callee;
       Ast **args;
       size_t arg_count;
+      Ast **values;
+      size_t val_count;
     } func_call;
 
     // block

@@ -40,9 +40,9 @@ void scope_memory_init(void);
 void scope_memory_release(Scope *global_scope);
 Scope *scope_create(void);
 Symbol *symbol_create(void);
+Symbol *find_symbol(Scope *current_scope, String *symbol);
 
 Scope *make_global_scope(void);
-
-void type_check(Ast *ast, Scope *current_scope);
+void populate_scopes(Ast *ast, Scope *current_scope);
 
 #endif // !SCOPE_H

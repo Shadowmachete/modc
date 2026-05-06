@@ -52,26 +52,36 @@ Ast *parse_token(Parser *p, Token t) {
   case T_FLOAT32:
   case T_FLOAT64:
   case T_BOOL:
-  case T_VOID:
+  case T_VOID: {
     lex_next(p->lexer);
     return parse_builtin_type(p, t);
+  }
   case T_STRUCT:
     return NULL;
-  case KW_IF:
+  case KW_IF: {
     lex_next(p->lexer);
     return parse_if(p, t);
-  case KW_WHILE:
+  }
+  case KW_WHILE: {
     lex_next(p->lexer);
     return parse_while(p, t);
-  case KW_FOR:
+  }
+  case KW_FOR: {
     lex_next(p->lexer);
     return parse_for(p, t);
-  case KW_SWITCH:
+  }
+  case KW_SWITCH: {
     lex_next(p->lexer);
     return parse_switch(p, t);
-  case KW_RETURN:
+  }
+  case KW_RETURN: {
     lex_next(p->lexer);
     return parse_return(p, t);
+  }
+  case TOKEN_LCURLY: {
+    lex_next(p->lexer);
+    return parse_block(p);
+  }
   default: {
     Ast *expr = parse_expr(p);
     lex_expect_next(p->lexer, TOKEN_SEMICOLON);
@@ -139,9 +149,6 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
     lex_expect_next(p->lexer, TOKEN_RPAREN);
     tok = lex_peek(p->lexer);
 
-    // no forward declarations needed, only full declaration with body since
-    // compiler will traverse the ast multiple times
-
     // TODO: in the future, allowing for struct / class methods check if the
     // "for" keyword comes after the function signature followed by a type below
     // the body of the function
@@ -168,9 +175,9 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
       lex_next(p->lexer);
       init = parse_expr(p);
     }
-
-    // TODO: when generating code, if not a function param replace the init with
-    // default init for the respective type. e.g. 0 for int, "" for string
+    // else {
+    //   init = make_default_init(type);
+    // }
 
     Ast *ast = ast_vardecl(name, len, type, init);
     ast->line = decl_line;
@@ -293,7 +300,11 @@ Ast *parse_switch(Parser *p, Token tok) {
 }
 
 Ast *parse_return(Parser *p, Token tok) {
-  Ast *expr = parse_expr(p);
+  Ast *expr = NULL;
+
+  if (lex_peek(p->lexer).type != TOKEN_SEMICOLON) {
+    expr = parse_expr(p);
+  }
 
   lex_expect_next(p->lexer, TOKEN_SEMICOLON);
 
@@ -317,7 +328,7 @@ Ast **parse_function_params(Parser *p, int *param_count) {
   while (next.type != TOKEN_RPAREN) {
     lex_expect_range(p->lexer, T_CHAR8, T_VOID); // expect it to be a type
     lex_next(p->lexer);
-    vec_push(params, (void *)parse_builtin_type(p, next));
+    vec_push(params, (void *)parse_param(p, next));
     next = lex_peek(p->lexer);
   }
 
@@ -331,13 +342,55 @@ Ast **parse_function_params(Parser *p, int *param_count) {
   return ast_statements;
 }
 
+Ast *parse_param(Parser *p, Token tok) {
+  int param_line = tok.line;
+
+  int ptr_depth = 0;
+  while (lex_peek(p->lexer).type == TOKEN_ASTERISK) {
+    ptr_depth++;
+    lex_next(p->lexer);
+  }
+
+  ModCType *type = type_to_builtin(tok.type);
+
+  if (ptr_depth > 0) {
+    type = make_pointer_type(type, ptr_depth);
+  }
+
+  tok = lex_peek(p->lexer);
+
+  lex_expect(p->lexer, TOKEN_IDENTIFIER);
+  tok = lex_next(p->lexer);
+
+  const char *name = tok.start;
+  size_t len = tok.length;
+
+  Ast *init = NULL;
+
+  if (lex_peek(p->lexer).type == TOKEN_ASSIGN) {
+    lex_next(p->lexer);
+    init = parse_expr(p);
+  }
+
+  Ast *ast = ast_vardecl(name, len, type, init);
+  ast->line = param_line;
+
+  lex_expect_next(p->lexer, TOKEN_SEMICOLON);
+
+  return ast;
+}
+
 Ast **parse_function_args(Parser *p, int *arg_count) {
   Vec *args = vec_new(&vec_ast_ptr_type);
 
   Token next = lex_peek(p->lexer);
 
   while (next.type != TOKEN_RPAREN) {
-    lex_next(p->lexer);
+    if (next.type == TOKEN_COMMA) {
+      lex_next(p->lexer);
+      next = lex_peek(p->lexer);
+      continue;
+    }
     vec_push(args, (void *)parse_expr(p));
     next = lex_peek(p->lexer);
   }
@@ -444,6 +497,7 @@ Ast *parse_postfix(Parser *p, Ast *left) {
 
     if (t.type == TOKEN_LPAREN) {
       // function call
+      lex_next(p->lexer);
       int arg_count = 0;
       Ast **args = parse_function_args(p, &arg_count);
       lex_expect_next(p->lexer, TOKEN_RPAREN);
