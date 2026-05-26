@@ -149,10 +149,16 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
     lex_expect_next(p->lexer, TOKEN_RPAREN);
     tok = lex_peek(p->lexer);
 
-    // TODO: in the future, allowing for struct / class methods check if the
-    // "for" keyword comes after the function signature followed by a type below
-    // the body of the function
-    // inspired by Rust's impl for syntax
+    // NOTE: the type of the first parameter defined will be given a "class"
+    // method so that you can either call this function as func(a, b) or
+    // a.func(b)
+    // I will not be supporting operator overloading (a + b will have to be
+    // add(a, b) or a.add(b))
+    //
+    // TODO: mangle function names with their type so that func(int, ...) and
+    // func(float, ...) can be defined for each of those types
+    // this can make it easier to look up the presence of a function in the
+    // symbol table too
 
     lex_expect_next(p->lexer, TOKEN_LCURLY);
 
@@ -264,6 +270,11 @@ Ast *parse_for(Parser *p, Token tok) {
    * for (init; cond; step) {
    *  body
    * }
+   *
+   * NOTE: currently for_init only supports one declaration by using the
+   * parse_builtin_type function
+   *
+   * TODO: support multiple variable declarations in for_init
    */
 
   int line = tok.line;
@@ -411,6 +422,9 @@ Ast *parse_block(Parser *p) {
    *  ...;
    *  ...;
    * }
+   *
+   * TODO: last statement in any block will be assigned as the block's return
+   * value if no semicolon is provided, else the return of the block is void
    */
 
   Vec *statements = vec_new(&vec_ast_ptr_type);

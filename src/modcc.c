@@ -3,6 +3,7 @@
 
 #include "arena.h"
 #include "ast.h"
+#include "ir.h"
 #include "lexer.h"
 #include "modc_types.h"
 #include "parser.h"
@@ -22,9 +23,10 @@ int main(int argc, char *argv[]) {
   printf("Source: \n%s\n", source);
 
   global_arena_init(ARENA_CAPACITY);
+  modctype_memory_init();
   ast_memory_init();
   scope_memory_init();
-  modctype_memory_init();
+  ir_memory_init();
 
   Lexer lexer;
   Parser *parser = parser_create(&lexer);
@@ -33,7 +35,7 @@ int main(int argc, char *argv[]) {
 
   check_errors();
 
-  /* ast_print(parser->ast, 0); */
+  ast_print(parser->ast, 0);
 
   Scope *global_scope = make_global_scope();
 
@@ -45,10 +47,12 @@ int main(int argc, char *argv[]) {
 
   check_errors();
 
-  // typecheck and identifier declared check
+  IrProgram *program = ir_gen(parser->ast);
+  ir_display(program);
 
   free(source);
   parser_free(parser);
+  ir_memory_release();
   scope_memory_release(global_scope);
   ast_memory_release();
   modctype_memory_release();

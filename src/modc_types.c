@@ -140,19 +140,30 @@ String *modctype_to_string(ModCType *type) {
   case TYPE_ARRAY: {
     String *element_str = modctype_to_string(type->array.element);
     String *ret = str_new();
-    str_catprintf(ret, "[%.*s, %d]", STR_FMT_UNWRAP(element_str),
+    str_catprintf(ret, "[%.*s; %d]", STR_FMT_UNWRAP(element_str),
                   type->array.length);
     return ret;
   }
   case TYPE_POINTER: {
     String *element_str = modctype_to_string(type->pointer.base);
     String *ret = str_new();
-    str_catprintf(ret, "%.*s%*s", (int)element_str->len, element_str->data,
+    str_catprintf(ret, "%.*s%*s", STR_FMT_UNWRAP(element_str),
                   type->pointer.depth, "*");
     return ret;
   }
-  case TYPE_FUNCTION:
-    return NULL;
+  case TYPE_FUNCTION: {
+    String *ret = str_new();
+    str_putc(ret, '(');
+    for (size_t i = 0; i < type->function.param_count; i++) {
+      str_cat(ret, modctype_to_string(type->function.params[i]));
+      if (i != type->function.param_count - 1)
+        str_cat_raw(ret, ", ", 2);
+    }
+    str_cat_raw(ret, "; ", 2);
+    str_cat(ret, modctype_to_string(type->function.return_type));
+    str_putc(ret, ')');
+    return ret;
+  } break;
   default: {
     const char *cstr = token_type_to_string(type->builtin);
     return str_dup_raw(cstr, strlen(cstr));
@@ -206,7 +217,7 @@ ModCType *make_function_type(ModCType *ret_type, Ast **params,
 
   ModCType **modctype_array = modctype_create_array(param_count);
   for (int i = 0; i < param_count; i++) {
-    modctype_array[i] = params[i]->type;
+    modctype_array[i] = params[i]->var_decl.type;
   }
 
   type->function.params = modctype_array;

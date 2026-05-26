@@ -22,8 +22,6 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
 
   /*
    * Handle other types:
-   *
-   * all defined in overload table?
    */
 
   String *binop_str = ast_binop_to_string(ast->binary.binop);
@@ -41,18 +39,15 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
       return;
     }
 
-    // TODO: check overloads table if operation is defined
-    b8 op_defined = 0;
+    // NOTE: no operator overloading, handle operations yourself with a.add(b)
+    // or add(a, b)
 
-    if (!op_defined) {
-      error(ast->line,
-            "Binary operation \"%.*s\" is not defined between types %.*s and "
-            "%.*s",
-            STR_FMT_UNWRAP(binop_str), STR_FMT_UNWRAP(left_type_str),
-            STR_FMT_UNWRAP(right_type_str));
-      ast->type = error_type;
-      return;
-    }
+    error(ast->line,
+          "Binary operation \"%.*s\" is not defined between types %.*s and "
+          "%.*s",
+          STR_FMT_UNWRAP(binop_str), STR_FMT_UNWRAP(left_type_str),
+          STR_FMT_UNWRAP(right_type_str));
+    ast->type = error_type;
 
     return;
   }
@@ -87,10 +82,9 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   /*
    * Handle floats and integers
    *
-   * mul, div, add, sub, log and, log or, comparison takes int/float for both
-   * mod, shl, shr, bit and, bit xor, bit or take int for both
+   * [mul, div, add, sub, log and, log or, comparison] take int/float for both
+   * [mod, shl, shr, bit and, bit xor, bit or] take int for both
    * same for the ones with assignment
-   *
    */
 
   switch (ast->binary.binop) {
@@ -202,6 +196,12 @@ void sema_unop(Ast *ast, Scope *current_scope, ModCType *return_type) {
 
   switch (ast->unary.unop) {
   case AST_UNOP_ADDR_OF: {
+    if (ast->unary.expr->variant != AST_IDENTIFIER) {
+      error(ast->line, "Attempt to get address of a non-variable");
+      ast->type = error_type;
+      return;
+    }
+
     ast->type = make_pointer_type(ast->unary.expr->type, 1);
   } break;
   case AST_UNOP_DEREF: {
@@ -228,6 +228,12 @@ void sema_unop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   } break;
   case AST_UNOP_POST_DEC:
   case AST_UNOP_PRE_DEC: {
+    if (ast->unary.expr->variant != AST_IDENTIFIER) {
+      error(ast->line, "Attempt to decrement a non-variable");
+      ast->type = error_type;
+      return;
+    }
+
     if (!t_is_numeric(ast->unary.expr->type)) {
       String *type_str = modctype_to_string(ast->unary.expr->type);
       error(ast->line, "Attempt to decrement non-numeric type %.*s",
@@ -240,6 +246,12 @@ void sema_unop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   } break;
   case AST_UNOP_POST_INC:
   case AST_UNOP_PRE_INC: {
+    if (ast->unary.expr->variant != AST_IDENTIFIER) {
+      error(ast->line, "Attempt to increment a non-variable");
+      ast->type = error_type;
+      return;
+    }
+
     if (!t_is_numeric(ast->unary.expr->type)) {
       String *type_str = modctype_to_string(ast->unary.expr->type);
       error(ast->line, "Attempt to increment non-numeric type %.*s",
@@ -497,8 +509,20 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
     sema_unop(ast, current_scope, return_type);
   } break;
   case AST_VAR: {
+    if (current_scope->variant == SCOPE_GLOBAL)
+      ast->var_decl.is_global = 1;
+
     if (ast->var_decl.initializer == NULL) {
       ast->type = void_type;
+      return;
+    }
+
+    if (ast->var_decl.is_global &&
+        (ast->var_decl.initializer->variant == AST_FUNCALL ||
+         ast->var_decl.initializer->variant == AST_FUNPTR_CALL)) {
+      error(ast->line, "Cannot assign runtime values to a global variable, "
+                       "comptime will be implemented in the future");
+      ast->type = error_type;
       return;
     }
 
@@ -522,6 +546,49 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
   } break;
   case AST_FUNCALL: {
     sema_funccall(ast, current_scope, return_type);
+  } break;
+  case AST_IF: {
+    sema_check(ast->if_stmt.cond, current_scope, return_type);
+    sema_check(ast->if_stmt.then, current_scope, return_type);
+    if (ast->if_stmt.els)
+      sema_check(ast->if_stmt.cond, current_scope, return_type);
+
+    if (ast->if_stmt.cond->type == error_type ||
+        ast->if_stmt.then->type == error_type ||
+        (ast->if_stmt.els != NULL && ast->if_stmt.els->type == error_type)) {
+      ast->type = error_type;
+      return;
+    }
+
+    ast->type = void_type;
+  } break;
+  case AST_FOR: {
+    sema_check(ast->for_stmt.forinit, current_scope, return_type);
+    sema_check(ast->for_stmt.forcond, current_scope, return_type);
+    sema_check(ast->for_stmt.forstep, current_scope, return_type);
+    sema_check(ast->for_stmt.forbody, current_scope, return_type);
+
+    if (ast->for_stmt.forinit->type == error_type ||
+        ast->for_stmt.forcond->type == error_type ||
+        ast->for_stmt.forstep->type == error_type ||
+        ast->for_stmt.forbody->type == error_type) {
+      ast->type = error_type;
+      return;
+    }
+
+    ast->type = void_type;
+  } break;
+  case AST_WHILE: {
+    sema_check(ast->while_stmt.whilecond, current_scope, return_type);
+    sema_check(ast->while_stmt.whilebody, current_scope, return_type);
+
+    if (ast->while_stmt.whilecond->type == error_type ||
+        ast->while_stmt.whilebody->type == error_type) {
+      ast->type = error_type;
+      return;
+    }
+
+    ast->type = void_type;
   } break;
   default:
     break;

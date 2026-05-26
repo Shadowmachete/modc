@@ -85,6 +85,7 @@ typedef enum {
 
 AstBinOp ast_toktype_to_binop(TokenType type);
 String *ast_binop_to_string(AstBinOp op);
+b8 binop_is_assignment(AstBinOp binop);
 
 typedef enum {
   // TODO: add more ast variants
@@ -164,6 +165,7 @@ struct Ast {
       String *name; // TODO: Maybe change to String_View
       ModCType *type;
       Ast *initializer; // optional
+      b8 is_global;
     } var_decl;
 
     // function declaration
@@ -284,6 +286,7 @@ Ast *ast_case(size_t value, Ast *body);
 Ast *ast_cast(Ast *expr, ModCType *type);
 
 void ast_print(Ast *ast, int depth);
+b8 ast_expr_contains_ident(Ast *ast);
 
 extern VecType vec_ast_ptr_type;
 

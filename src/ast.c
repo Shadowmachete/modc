@@ -248,6 +248,10 @@ String *ast_binop_to_string(AstBinOp op) {
   return NULL;
 }
 
+b8 binop_is_assignment(AstBinOp binop) {
+  return binop / 2 >= 18 && binop / 2 <= 28;
+}
+
 Ast *ast_int64(i64 val) {
   Ast *ast = ast_create();
 
@@ -337,6 +341,7 @@ Ast *ast_vardecl(const char *name, size_t len, ModCType *type, Ast *init) {
   ast->var_decl.name = str_dup_raw(name, len);
   ast->var_decl.type = type;
   ast->var_decl.initializer = init;
+  ast->var_decl.is_global = 0;
 
   return ast;
 }
@@ -599,4 +604,28 @@ void ast_print(Ast *ast, int depth) {
   default:
     break; // unreachable
   }
+}
+
+b8 ast_expr_contains_ident(Ast *ast) {
+  switch (ast->variant) {
+  case AST_BINOP: {
+    return (ast->binary.binop != AST_BIN_OP_ASSIGN &&
+            ast->binary.left->variant != AST_BINOP &&
+            ast_expr_contains_ident(ast->binary.left)) ||
+           (ast->binary.right->variant != AST_BINOP &&
+            ast_expr_contains_ident(ast->binary.right));
+  } break;
+  case AST_IDENTIFIER:
+    return 1;
+  case AST_CAST: {
+    return ast_expr_contains_ident(ast->type_cast.expr);
+  }
+  case AST_RETURN: {
+    return ast_expr_contains_ident(ast->return_stmt.expr);
+  }
+  default:
+    break;
+  }
+
+  return 0;
 }
