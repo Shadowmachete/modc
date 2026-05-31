@@ -20,10 +20,10 @@ typedef struct {
     i64 number; // integer / bool / char
     f64 fvalue; // float
     String *str_value;
-    String
-        *var_name; // points into symbol table TODO: maybe change to String_View
-    int temp_id;   // t0, t1, ...
-    int label_id;  // L0, L1
+    String *
+        var_name; // points into symbol table  TODO: maybe change to String_View
+    int temp_id;  // t0, t1, ...
+    int label_id; // L0, L1, ...
   };
 } IrOperand;
 
@@ -183,11 +183,12 @@ typedef struct {
   IrFunc **funcs;
   size_t func_count;
 
-  IrGlobalVar *globals;
+  IrGlobalVar **globals;
   size_t global_count;
 } IrProgram;
 
 typedef struct {
+  File *f;
   IrProgram *program;
   IrFunc *current_func;
 

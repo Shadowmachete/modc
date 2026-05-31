@@ -84,7 +84,7 @@ extern ModCType *error_type;
 void modctype_memory_init(void);
 void modctype_memory_release(void);
 
-ModCType *type_to_builtin(TokenType type);
+ModCType *tok_type_to_modctype(TokenType type);
 String *modctype_to_string(ModCType *type);
 
 ModCType *make_pointer_type(ModCType *base, int ptr_depth);

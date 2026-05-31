@@ -1,6 +1,7 @@
 #include "sema.h"
 #include "ast.h"
 #include "hash_map.h"
+#include "lexer.h"
 #include "modc_types.h"
 #include "scope.h"
 #include "str.h"
@@ -31,7 +32,8 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   if (!t_is_numeric(left->type) || !t_is_numeric(right->type)) {
     if (ast->binary.binop == AST_BIN_OP_ASSIGN) {
       if (left->type != right->type) {
-        error(ast->line, "Cannot assign value of type %.*s to type %.*s",
+        error(current_scope->f, ast->line_info,
+              "Cannot assign value of type %.*s to type %.*s",
               STR_FMT_UNWRAP(right_type_str), STR_FMT_UNWRAP(left_type_str));
         ast->type = error_type;
       }
@@ -42,7 +44,7 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
     // NOTE: no operator overloading, handle operations yourself with a.add(b)
     // or add(a, b)
 
-    error(ast->line,
+    error(current_scope->f, ast->line_info,
           "Binary operation \"%.*s\" is not defined between types %.*s and "
           "%.*s",
           STR_FMT_UNWRAP(binop_str), STR_FMT_UNWRAP(left_type_str),
@@ -64,7 +66,7 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   if (left_is_bool || right_is_bool) {
     if (ast->binary.binop != AST_BIN_OP_LOG_AND &&
         ast->binary.binop != AST_BIN_OP_LOG_OR) {
-      error(ast->line,
+      error(current_scope->f, ast->line_info,
             "Binary operation \"%.*s\" is not defined for type boolean",
             STR_FMT_UNWRAP(binop_str));
       ast->type = error_type;
@@ -92,14 +94,16 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
     if (left->variant != AST_IDENTIFIER ||
         find_symbol(current_scope, left->ident.name)->variant !=
             SYMBOL_VARIABLE) {
-      error(ast->line, "Left hand side of an assignment is not a variable");
+      error(current_scope->f, ast->line_info,
+            "Left hand side of an assignment is not a variable");
       ast->type = error_type;
       return;
     }
 
     if (!types_can_fit(left->type, right->type)) {
-      error(ast->line, "Cannot implicitly cast the value of the right hand "
-                       "side to the assigned type on the left");
+      error(current_scope->f, ast->line_info,
+            "Cannot implicitly cast the value of the right hand "
+            "side to the assigned type on the left");
       ast->type = error_type;
       return;
     }
@@ -119,7 +123,8 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
     if (left->variant != AST_IDENTIFIER ||
         find_symbol(current_scope, left->ident.name)->variant !=
             SYMBOL_VARIABLE) {
-      error(ast->line, "Left hand side of an assignment is not a variable");
+      error(current_scope->f, ast->line_info,
+            "Left hand side of an assignment is not a variable");
       ast->type = error_type;
       return;
     }
@@ -127,8 +132,9 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
     ModCType *combined_type = make_combined_type(ast);
 
     if (!types_can_fit(left->type, combined_type)) {
-      error(ast->line, "Cannot implicitly cast the value of the right hand "
-                       "side to the assigned type on the left");
+      error(current_scope->f, ast->line_info,
+            "Cannot implicitly cast the value of the right hand "
+            "side to the assigned type on the left");
       ast->type = error_type;
       return;
     }
@@ -153,7 +159,8 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   case AST_BIN_OP_BIT_OR: {
     if (left->type->variant == TYPE_FLOAT ||
         right->type->variant == TYPE_FLOAT) {
-      error(ast->line, "Binary operation %.*s is not defined for type float",
+      error(current_scope->f, ast->line_info,
+            "Binary operation %.*s is not defined for type float",
             STR_FMT_UNWRAP(binop_str));
       ast->type = error_type;
       return;
@@ -170,14 +177,16 @@ void sema_binop(Ast *ast, Scope *current_scope, ModCType *return_type) {
     if (left->variant != AST_IDENTIFIER ||
         find_symbol(current_scope, left->ident.name)->variant !=
             SYMBOL_VARIABLE) {
-      error(ast->line, "Left hand side of an assignment is not a variable");
+      error(current_scope->f, ast->line_info,
+            "Left hand side of an assignment is not a variable");
       ast->type = error_type;
       return;
     }
 
     if (left->type->variant == TYPE_FLOAT ||
         right->type->variant == TYPE_FLOAT) {
-      error(ast->line, "Binary operation %.*s is not defined for type float",
+      error(current_scope->f, ast->line_info,
+            "Binary operation %.*s is not defined for type float",
             STR_FMT_UNWRAP(binop_str));
       ast->type = error_type;
       return;
@@ -197,7 +206,8 @@ void sema_unop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   switch (ast->unary.unop) {
   case AST_UNOP_ADDR_OF: {
     if (ast->unary.expr->variant != AST_IDENTIFIER) {
-      error(ast->line, "Attempt to get address of a non-variable");
+      error(current_scope->f, ast->line_info,
+            "Attempt to get address of a non-variable");
       ast->type = error_type;
       return;
     }
@@ -207,7 +217,8 @@ void sema_unop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   case AST_UNOP_DEREF: {
     if (ast->unary.expr->type->variant != TYPE_POINTER) {
       String *type_str = modctype_to_string(ast->unary.expr->type);
-      error(ast->line, "Attempt to deference a non-pointer type %.*s",
+      error(current_scope->f, ast->line_info,
+            "Attempt to deference a non-pointer type %.*s",
             STR_FMT_UNWRAP(type_str));
       ast->type = error_type;
       return;
@@ -229,14 +240,16 @@ void sema_unop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   case AST_UNOP_POST_DEC:
   case AST_UNOP_PRE_DEC: {
     if (ast->unary.expr->variant != AST_IDENTIFIER) {
-      error(ast->line, "Attempt to decrement a non-variable");
+      error(current_scope->f, ast->line_info,
+            "Attempt to decrement a non-variable");
       ast->type = error_type;
       return;
     }
 
     if (!t_is_numeric(ast->unary.expr->type)) {
       String *type_str = modctype_to_string(ast->unary.expr->type);
-      error(ast->line, "Attempt to decrement non-numeric type %.*s",
+      error(current_scope->f, ast->line_info,
+            "Attempt to decrement non-numeric type %.*s",
             STR_FMT_UNWRAP(type_str));
       ast->type = error_type;
       return;
@@ -247,14 +260,16 @@ void sema_unop(Ast *ast, Scope *current_scope, ModCType *return_type) {
   case AST_UNOP_POST_INC:
   case AST_UNOP_PRE_INC: {
     if (ast->unary.expr->variant != AST_IDENTIFIER) {
-      error(ast->line, "Attempt to increment a non-variable");
+      error(current_scope->f, ast->line_info,
+            "Attempt to increment a non-variable");
       ast->type = error_type;
       return;
     }
 
     if (!t_is_numeric(ast->unary.expr->type)) {
       String *type_str = modctype_to_string(ast->unary.expr->type);
-      error(ast->line, "Attempt to increment non-numeric type %.*s",
+      error(current_scope->f, ast->line_info,
+            "Attempt to increment non-numeric type %.*s",
             STR_FMT_UNWRAP(type_str));
       ast->type = error_type;
       return;
@@ -272,7 +287,8 @@ void sema_funccall(Ast *ast, Scope *current_scope, ModCType *return_type) {
   Symbol *func = find_symbol(current_scope, ast->func_call.callee->ident.name);
 
   if (func == NULL) {
-    error(ast->line, "Identifier \"%.*s\" used before declaration",
+    error(current_scope->f, ast->line_info,
+          "Identifier \"%.*s\" used before declaration",
           STR_FMT_UNWRAP(ast->func_call.callee->ident.name));
     ast->type = error_type;
     return;
@@ -290,7 +306,8 @@ void sema_funccall(Ast *ast, Scope *current_scope, ModCType *return_type) {
       first_kw_arg = ast->func_call.args[i];
 
     if (!is_kw_arg && first_kw_arg != NULL) {
-      error(ast->line, "Positional argument follows keyword argument");
+      error(current_scope->f, ast->line_info,
+            "Positional argument follows keyword argument");
       ast->type = error_type;
     }
 
@@ -328,7 +345,8 @@ void sema_funccall(Ast *ast, Scope *current_scope, ModCType *return_type) {
 
     if (is_kw_arg) {
       if (!hashmap_has(param_name_to_idx, arg->binary.left->var_decl.name)) {
-        error(arg->line, "%.*s() got an unexpected keyword argument \'%.*s\'",
+        error(current_scope->f, arg->line_info,
+              "%.*s() got an unexpected keyword argument \'%.*s\'",
               STR_FMT_UNWRAP(func->decl->func_decl.name),
               STR_FMT_UNWRAP(arg->binary.left->var_decl.name));
         ast->type = error_type;
@@ -339,7 +357,7 @@ void sema_funccall(Ast *ast, Scope *current_scope, ModCType *return_type) {
           (u64)hashmap_get(param_name_to_idx, arg->binary.left->var_decl.name);
 
       if (values[idx] != NULL) {
-        error(arg->line,
+        error(current_scope->f, arg->line_info,
               "%.*s() got multiple values for keyword argument \'%.*s\'",
               STR_FMT_UNWRAP(func->decl->func_decl.name),
               STR_FMT_UNWRAP(arg->binary.left->var_decl.name));
@@ -380,7 +398,7 @@ void sema_funccall(Ast *ast, Scope *current_scope, ModCType *return_type) {
                     STR_FMT_UNWRAP((String *)vec_get_at(missing, i)));
     }
 
-    error(ast->line, buf->data);
+    error(current_scope->f, ast->line_info, buf->data);
     ast->type = error_type;
 
     vec_release(missing);
@@ -396,7 +414,7 @@ void sema_funccall(Ast *ast, Scope *current_scope, ModCType *return_type) {
     if (!types_can_fit(values[i]->type, params[i]->var_decl.type)) {
       String *val_type_str = modctype_to_string(values[i]->type);
       String *param_type_str = modctype_to_string(params[i]->var_decl.type);
-      error(ast->line,
+      error(current_scope->f, ast->line_info,
             "Cannot assign value of type %.*s to param \'%.*s\' of function "
             "%.*s() with type "
             "%.*s, an "
@@ -421,7 +439,7 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
     for (size_t i = 0; i < ast->block.stmt_count; i++) {
       if (ast->block.scope->variant == SCOPE_FUNCTION &&
           ast->block.statements[i]->variant == AST_FUNC) {
-        error(ast->block.statements[i]->line,
+        error(current_scope->f, ast->block.statements[i]->line_info,
               "Support for nested functions has not be implemented yet");
         ast->type = error_type;
         continue;
@@ -441,7 +459,7 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
 
       if (ast->func_decl.params[i]->var_decl.initializer == NULL &&
           first_kw_arg != NULL) {
-        error(ast->line,
+        error(current_scope->f, ast->line_info,
               "Parameter without default %.*s follows parameter with a default",
               STR_FMT_UNWRAP(ast->func_decl.params[i]->var_decl.name));
         ast->type = error_type;
@@ -454,12 +472,19 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
     sema_check(ast->func_decl.body, current_scope,
                ast->func_decl.func_type->function.return_type);
 
+    // FIX: this last stmt naive check for return on all paths is
+    // inherently wrong as there could be dead code after a return statement.
+    // Instead we may need to do some control flow analysis / develop a graph,
+    // or just go through statement by statement and determine whether each path
+    // has a return out
+
     Ast *last_stmt = ast->func_decl.body->block
                          .statements[ast->func_decl.body->block.stmt_count - 1];
 
     if (last_stmt->variant != AST_RETURN &&
         ast->func_decl.func_type->function.return_type != void_type) {
-      error(last_stmt->line, "Non-void function does not return on all paths");
+      error(current_scope->f, last_stmt->line_info,
+            "Non-void function does not return on all paths");
       ast->type = error_type;
     }
   } break;
@@ -479,7 +504,7 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
     if (!types_can_fit(ast->type, return_type)) {
       String *ret_type_str = modctype_to_string(return_type);
       String *ast_type_str = modctype_to_string(ast->type);
-      error(ast->line,
+      error(current_scope->f, ast->line_info,
             "Return type %.*s is does not match function return type %.*s, an "
             "explicit cast may be required",
             STR_FMT_UNWRAP(ast_type_str), STR_FMT_UNWRAP(ret_type_str));
@@ -494,7 +519,8 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
     Symbol *sym = find_symbol(current_scope, ast->ident.name);
 
     if (sym == NULL) {
-      error(ast->line, "Identifier \"%.*s\" used before declaration",
+      error(current_scope->f, ast->line_info,
+            "Identifier \"%.*s\" used before declaration",
             STR_FMT_UNWRAP(ast->ident.name));
       ast->type = error_type;
       return;
@@ -518,10 +544,10 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
     }
 
     if (ast->var_decl.is_global &&
-        (ast->var_decl.initializer->variant == AST_FUNCALL ||
-         ast->var_decl.initializer->variant == AST_FUNPTR_CALL)) {
-      error(ast->line, "Cannot assign runtime values to a global variable, "
-                       "comptime will be implemented in the future");
+        ast->var_decl.initializer->variant > AST_BOOL) {
+      error(current_scope->f, ast->line_info,
+            "Cannot assign runtime values to a global variable, "
+            "comptime will be implemented in the future");
       ast->type = error_type;
       return;
     }
@@ -533,7 +559,7 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
 
     if (ast->var_decl.type->variant !=
         ast->var_decl.initializer->type->variant) {
-      error(ast->line,
+      error(current_scope->f, ast->line_info,
             "Attempted to assign expression of type %.*s to variable %.*s with "
             "defined type %.*s",
             STR_FMT_UNWRAP(init_type_str), STR_FMT_UNWRAP(ast->var_decl.name),
@@ -551,7 +577,7 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
     sema_check(ast->if_stmt.cond, current_scope, return_type);
     sema_check(ast->if_stmt.then, current_scope, return_type);
     if (ast->if_stmt.els)
-      sema_check(ast->if_stmt.cond, current_scope, return_type);
+      sema_check(ast->if_stmt.els, current_scope, return_type);
 
     if (ast->if_stmt.cond->type == error_type ||
         ast->if_stmt.then->type == error_type ||
@@ -563,14 +589,23 @@ void sema_check(Ast *ast, Scope *current_scope, ModCType *return_type) {
     ast->type = void_type;
   } break;
   case AST_FOR: {
-    sema_check(ast->for_stmt.forinit, current_scope, return_type);
-    sema_check(ast->for_stmt.forcond, current_scope, return_type);
-    sema_check(ast->for_stmt.forstep, current_scope, return_type);
+    if (ast->for_stmt.forinit != NULL) {
+      sema_check(ast->for_stmt.forinit, current_scope, return_type);
+    }
+    if (ast->for_stmt.forcond != NULL) {
+      sema_check(ast->for_stmt.forcond, current_scope, return_type);
+    }
+    if (ast->for_stmt.forstep != NULL) {
+      sema_check(ast->for_stmt.forstep, current_scope, return_type);
+    }
     sema_check(ast->for_stmt.forbody, current_scope, return_type);
 
-    if (ast->for_stmt.forinit->type == error_type ||
-        ast->for_stmt.forcond->type == error_type ||
-        ast->for_stmt.forstep->type == error_type ||
+    if ((ast->for_stmt.forinit != NULL &&
+         ast->for_stmt.forinit->type == error_type) ||
+        (ast->for_stmt.forcond != NULL &&
+         ast->for_stmt.forcond->type == error_type) ||
+        (ast->for_stmt.forstep != NULL &&
+         ast->for_stmt.forstep->type == error_type) ||
         ast->for_stmt.forbody->type == error_type) {
       ast->type = error_type;
       return;

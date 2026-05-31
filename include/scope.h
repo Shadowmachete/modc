@@ -4,6 +4,7 @@
 #include "ast.h"
 #include "hash_map.h"
 #include "str.h"
+#include "utils.h"
 #include "vec.h"
 
 typedef struct Scope Scope;
@@ -20,6 +21,7 @@ struct Scope {
   Scope *parent;
   Vec *children;
   HashMap *symbols;
+  File *f;
 };
 
 struct Symbol {
@@ -38,11 +40,11 @@ struct Symbol {
 
 void scope_memory_init(void);
 void scope_memory_release(Scope *global_scope);
-Scope *scope_create(void);
-Symbol *symbol_create(void);
+Scope *scope_create(Scope *parent, String *name);
+Symbol *symbol_create(Scope *scope, String *name, ModCType *type, Ast *decl);
 Symbol *find_symbol(Scope *current_scope, String *symbol);
 
-Scope *make_global_scope(void);
+Scope *make_global_scope(File *f);
 void populate_scopes(Ast *ast, Scope *current_scope);
 
 #endif // !SCOPE_H

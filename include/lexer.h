@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "types.h"
+#include "utils.h"
 
 typedef enum {
   // builtin types
@@ -107,36 +108,40 @@ typedef enum {
   TOKEN_STRING,
   TOKEN_IDENTIFIER,
 
+  TOKEN_NEWLINE,
   TOKEN_EOF,
   TOKEN_UNKNOWN,
 } TokenType;
 
-const char *token_type_to_string(TokenType t);
+const char *token_type_to_cstr(TokenType t);
 
 typedef struct {
   const char *start;
   size_t length;
-  size_t line;
+  LineInfo line_info;
   TokenType type;
 } Token;
 
 void token_print(Token t);
 
 typedef struct {
-  const char *src;
+  File *f;
   size_t pos;
+  const char *line_offset;
   size_t line;
 
   Token peeked;
   b8 has_peeked;
 } Lexer;
 
-void lex_init(Lexer *l, const char *src);
+void lex_init(Lexer *l, File *f);
 Token lex_next(Lexer *l);
 Token lex_peek(Lexer *l);
-void lex_expect(Lexer *l, TokenType tok_type);
-void lex_expect_range(Lexer *l, TokenType start, TokenType end);
-void lex_expect_next(Lexer *l, TokenType tok_type);
+b8 lex_expect_(Lexer *l, TokenType tok_type, Token *tok_actual);
+b8 lex_expect_range_(Lexer *l, TokenType start, TokenType end,
+                     Token *tok_actual);
+void lex_expect_any(Lexer *l, ...);
+b8 lex_expect_next_(Lexer *l, TokenType tok_type, Token *tok_actual);
 Token lex_number(Lexer *l, char *c, const char *start);
 Token lex_string(Lexer *l, char *c, const char *start);
 void lex_comment(Lexer *l, char *c);

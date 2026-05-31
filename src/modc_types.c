@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 
 #include "arena.h"
@@ -33,8 +34,10 @@ static ModCType *modctype_alloc(void) {
 ModCType *modctype_create(void) {
   ModCType *type = modctype_alloc();
 
-  if (!type)
-    error(0, "malloc failed creating modctype");
+  if (!type) {
+    error(NULL, (LineInfo){0}, "arena failed to allocate modctype");
+    exit(1);
+  }
 
   memset(type, 0, sizeof(ModCType));
 
@@ -45,8 +48,10 @@ ModCType **modctype_create_array(int len) {
   ModCType **modctype_array =
       (ModCType **)arena_alloc(&modctype_arena, sizeof(ModCType *) * len);
 
-  if (!modctype_array)
-    error(0, "arena alloc failed creating ModCType array");
+  if (!modctype_array) {
+    error(NULL, (LineInfo){0}, "arena alloc failed creating ModCType array");
+    exit(1);
+  }
 
   memset(modctype_array, 0, sizeof(ModCType *) * len);
 
@@ -92,7 +97,7 @@ ModCType *void_type = &(ModCType){
 ModCType *error_type =
     &(ModCType){.variant = TYPE_ERROR, .size = 0, .is_signed = false};
 
-ModCType *type_to_builtin(TokenType type) {
+ModCType *tok_type_to_modctype(TokenType type) {
   switch (type) {
   case T_CHAR8:
     return char_8_type;
@@ -127,8 +132,9 @@ ModCType *type_to_builtin(TokenType type) {
   case T_VOID:
     return void_type;
   default:
-    error(0, "Invalid builtin token %s passed to builtin_to_type",
-          token_type_to_string(type));
+    error(NULL, (LineInfo){0},
+          "Invalid builtin token %s passed to builtin_to_type",
+          token_type_to_cstr(type));
   }
   return NULL;
 }
@@ -165,7 +171,7 @@ String *modctype_to_string(ModCType *type) {
     return ret;
   } break;
   default: {
-    const char *cstr = token_type_to_string(type->builtin);
+    const char *cstr = token_type_to_cstr(type->builtin);
     return str_dup_raw(cstr, strlen(cstr));
   }
   }
@@ -292,7 +298,6 @@ ModCType *common_numeric_type(ModCType *a, ModCType *b, int *cast_lhs,
 }
 
 ModCType *make_combined_type(Ast *node) {
-  AstBinOp op = node->binary.binop;
   ModCType *left = node->binary.left->type;
   ModCType *right = node->binary.right->type;
 
@@ -301,21 +306,18 @@ ModCType *make_combined_type(Ast *node) {
   ModCType *result = common_numeric_type(left, right, &cast_lhs, &cast_rhs);
 
   if (result == NULL) {
-    (void)op;
-    // TODO: check overload table for string + string, Vec2 + Vec2 etc
-
     return NULL;
   }
 
   if (cast_lhs) {
-    int line = node->binary.left->line;
+    LineInfo line_info = node->binary.left->line_info;
     node->binary.left = ast_cast(node->binary.left, result);
-    node->binary.left->line = line;
+    node->binary.left->line_info = line_info;
   }
   if (cast_rhs) {
-    int line = node->binary.right->line;
+    LineInfo line_info = node->binary.right->line_info;
     node->binary.right = ast_cast(node->binary.right, result);
-    node->binary.right->line = line;
+    node->binary.right->line_info = line_info;
   }
 
   return result;

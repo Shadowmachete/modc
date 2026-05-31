@@ -19,8 +19,8 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  char *source = readin(argv[1]);
-  printf("Source: \n%s\n", source);
+  File f = readin(argv[1]);
+  printf("Source: \n%s\n", f.src);
 
   global_arena_init(ARENA_CAPACITY);
   modctype_memory_init();
@@ -31,13 +31,13 @@ int main(int argc, char *argv[]) {
   Lexer lexer;
   Parser *parser = parser_create(&lexer);
 
-  parse(parser, source); // produce AST
+  parse(parser, &f);
 
   check_errors();
 
-  ast_print(parser->ast, 0);
+  /* ast_print(parser->ast, 0); */
 
-  Scope *global_scope = make_global_scope();
+  Scope *global_scope = make_global_scope(&f);
 
   parser->ast->block.scope = global_scope;
 
@@ -48,10 +48,20 @@ int main(int argc, char *argv[]) {
   check_errors();
 
   IrProgram *program = ir_gen(parser->ast);
+  // TODO: implement CFG, SSA and use memory read-modify-write operations
+  // instead of separate instructions
   ir_display(program);
 
-  free(source);
+  check_errors();
+
+  // TODO: IR optimisation
+
+  // TODO: Code gen
+
   parser_free(parser);
+
+  free((void *)f.src);
+
   ir_memory_release();
   scope_memory_release(global_scope);
   ast_memory_release();

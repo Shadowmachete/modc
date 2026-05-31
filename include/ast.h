@@ -6,6 +6,7 @@
 #include "lexer.h"
 #include "str.h"
 #include "types.h"
+#include "utils.h"
 #include "vec.h"
 
 typedef struct ModCType ModCType;
@@ -89,33 +90,33 @@ b8 binop_is_assignment(AstBinOp binop);
 
 typedef enum {
   // TODO: add more ast variants
-  AST_INTEGER,
-  AST_FLOAT,
-  AST_STRING,
-  AST_BOOL,
-  AST_IDENTIFIER,
+  AST_INTEGER = 0,
+  AST_FLOAT = 1,
+  AST_STRING = 2,
+  AST_BOOL = 3,
+  AST_IDENTIFIER = 4,
 
-  AST_UNOP,
-  AST_BINOP,
+  AST_UNOP = 5,
+  AST_BINOP = 6,
 
-  AST_VAR,
-  AST_FUNC,
-  AST_FUNCALL,
-  AST_FUNPTR,
-  AST_FUNPTR_CALL,
+  AST_VAR = 7,
+  AST_FUNC = 8,
+  AST_FUNCALL = 9,
+  AST_FUNPTR = 10,
+  AST_FUNPTR_CALL = 11,
 
-  AST_BLOCK,
-  AST_IF,
-  AST_FOR,
-  AST_WHILE,
-  AST_RETURN,
-  AST_BREAK,
-  AST_CONTINUE,
+  AST_BLOCK = 12,
+  AST_IF = 13,
+  AST_FOR = 14,
+  AST_WHILE = 15,
+  AST_RETURN = 16,
+  AST_BREAK = 17,
+  AST_CONTINUE = 18,
 
-  AST_SWITCH,
-  AST_CASE,
-  AST_JUMP,
-  AST_CAST,
+  AST_SWITCH = 19,
+  AST_CASE = 20,
+  AST_JUMP = 21,
+  AST_CAST = 22,
 } AstVariant;
 
 typedef struct Ast Ast;
@@ -125,7 +126,7 @@ struct Ast {
   AstVariant variant;
   ModCType *type;
 
-  int line;
+  LineInfo line_info;
 
   union {
     // literals
@@ -161,6 +162,7 @@ struct Ast {
 
     // variable declaration
     // e.g. int_64 x [= 10];
+    // TODO: change this to a array of decls
     struct {
       String *name; // TODO: Maybe change to String_View
       ModCType *type;

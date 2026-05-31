@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,11 +10,22 @@
 #include "utils.h"
 #include "vec.h"
 
+#define expr_expect                                                            \
+  if (!lex_expect_(p->lexer, TOKEN_SEMICOLON, &tok_actual)) {                  \
+    error(p->lexer->f, tok_actual.line_info,                                   \
+          "expected ';' after expression, got '%s'",                           \
+          token_type_to_cstr(tok_actual.type));                                \
+  } else {                                                                     \
+    lex_next(p->lexer);                                                        \
+  }
+
+Token tok_actual;
+
 Parser *parser_create(Lexer *l) {
   Parser *parser = malloc(sizeof(Parser));
 
   if (!parser)
-    error(0, "malloc failed creating parser");
+    error(NULL, (LineInfo){0}, "malloc failed creating parser");
 
   parser->lexer = l;
 
@@ -24,12 +36,10 @@ Parser *parser_create(Lexer *l) {
 
 void parser_free(Parser *p) { free(p); }
 
-void parse(Parser *p, const char *src) {
-  lex_init(p->lexer, src);
+void parse(Parser *p, File *f) {
+  lex_init(p->lexer, f);
 
   Ast *ast = parse_block(p);
-  // each block will be considered its own variable
-  // scope, this will allow for shadowing of variable names
   p->ast = ast;
 }
 
@@ -62,6 +72,13 @@ Ast *parse_token(Parser *p, Token t) {
     lex_next(p->lexer);
     return parse_if(p, t);
   }
+  case KW_ELSE: {
+    lex_next(p->lexer);
+    error(p->lexer->f, t.line_info,
+          "encountered token 'ELSE' outside of if-else group");
+
+    return NULL;
+  }
   case KW_WHILE: {
     lex_next(p->lexer);
     return parse_while(p, t);
@@ -82,9 +99,13 @@ Ast *parse_token(Parser *p, Token t) {
     lex_next(p->lexer);
     return parse_block(p);
   }
+  case TOKEN_NEWLINE: {
+    lex_next(p->lexer);
+    return parse_token(p, lex_peek(p->lexer));
+  }
   default: {
     Ast *expr = parse_expr(p);
-    lex_expect_next(p->lexer, TOKEN_SEMICOLON);
+    expr_expect;
     return expr;
   }
   }
@@ -97,7 +118,7 @@ Ast *parse_i64(Token t) {
   memcpy(buf, t.start, n);
   buf[n] = 0;
   Ast *ast = ast_int64((i64)strtoll(buf, NULL, 10));
-  ast->line = t.line;
+  ast->line_info = t.line_info;
   return ast;
 }
 
@@ -108,45 +129,61 @@ Ast *parse_f64(Token t) {
   memcpy(buf, t.start, n);
   buf[n] = 0;
   Ast *ast = ast_float64(strtod(buf, NULL));
-  ast->line = t.line;
+  ast->line_info = t.line_info;
   return ast;
 }
 
 Ast *parse_builtin_type(Parser *p, Token tok) {
-  int decl_line = tok.line;
-
   int ptr_depth = 0;
   while (lex_peek(p->lexer).type == TOKEN_ASTERISK) {
     ptr_depth++;
     lex_next(p->lexer);
   }
 
-  ModCType *type = type_to_builtin(tok.type);
+  ModCType *type = tok_type_to_modctype(tok.type);
 
   if (ptr_depth > 0) {
     type = make_pointer_type(type, ptr_depth);
   }
 
-  tok = lex_peek(p->lexer);
+  const char *name;
+  size_t len;
 
-  lex_expect(p->lexer, TOKEN_IDENTIFIER);
-  tok = lex_next(p->lexer);
-
-  const char *name = tok.start;
-  size_t len = tok.length;
+  if (!lex_expect_(p->lexer, TOKEN_IDENTIFIER, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info,
+          "expected identifier after type, got '%s'",
+          token_type_to_cstr(tok_actual.type));
+  } else {
+    tok = lex_next(p->lexer);
+    name = tok.start;
+    len = tok.length;
+  }
 
   // This will be a declaration
   tok = lex_peek(p->lexer);
+  LineInfo decl_line_info = tok.line_info;
 
   if (tok.type == TOKEN_LPAREN) {
     // function declaration
-    // [type] [ident]([params]) [for type]
+    // [type] [ident]([params]) { body }
 
     lex_next(p->lexer);
 
     int param_count = 0;
     Ast **params = parse_function_params(p, &param_count);
-    lex_expect_next(p->lexer, TOKEN_RPAREN);
+    if (lex_peek(p->lexer).type == TOKEN_EOF) {
+      error(p->lexer->f, tok.line_info, "function param never closes");
+
+      return NULL;
+    }
+
+    if (!lex_expect_(p->lexer, TOKEN_RPAREN, &tok_actual)) {
+      error(p->lexer->f, tok_actual.line_info, "expected ')' before '%s'",
+            token_type_to_cstr(tok_actual.type));
+    } else {
+      lex_next(p->lexer);
+    }
+
     tok = lex_peek(p->lexer);
 
     // NOTE: the type of the first parameter defined will be given a "class"
@@ -160,20 +197,36 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
     // this can make it easier to look up the presence of a function in the
     // symbol table too
 
-    lex_expect_next(p->lexer, TOKEN_LCURLY);
+    if (!lex_expect_(p->lexer, TOKEN_LCURLY, &tok_actual)) {
+      error(p->lexer->f, tok_actual.line_info,
+            "expected function body after function declarator");
+    } else {
+      lex_next(p->lexer);
+    }
 
     Ast *body = parse_block(p);
 
-    lex_expect_next(p->lexer, TOKEN_RCURLY);
+    if (lex_peek(p->lexer).type == TOKEN_EOF) {
+      error(p->lexer->f, tok.line_info, "function block never closes");
+      return NULL;
+    }
+
+    if (!lex_expect_(p->lexer, TOKEN_RCURLY, &tok_actual)) {
+      error(p->lexer->f, tok_actual.line_info,
+            "expected end of function body, got '%s'",
+            token_type_to_cstr(tok_actual.type));
+    } else {
+      lex_next(p->lexer);
+    }
 
     Ast *ast = ast_funcdecl(name, len, type, params, param_count, body);
 
-    ast->line = decl_line;
+    ast->line_info = decl_line_info;
 
     return ast;
   } else {
     // variable declaration
-    // [type] [ident]
+    // [type] [ident] [= init], ...;
 
     Ast *init = NULL;
 
@@ -185,10 +238,17 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
     //   init = make_default_init(type);
     // }
 
-    Ast *ast = ast_vardecl(name, len, type, init);
-    ast->line = decl_line;
+    // TODO: change ast to contain a array of var decls to store multiple decls
 
-    lex_expect_next(p->lexer, TOKEN_SEMICOLON);
+    Ast *ast = ast_vardecl(name, len, type, init);
+    ast->line_info = decl_line_info;
+
+    if (!lex_expect_(p->lexer, TOKEN_SEMICOLON, &tok_actual)) {
+      error(p->lexer->f, tok_actual.line_info,
+            "expected ';' after variable declaration");
+    } else {
+      lex_next(p->lexer);
+    }
 
     return ast;
   }
@@ -197,7 +257,7 @@ Ast *parse_builtin_type(Parser *p, Token tok) {
 Ast *parse_ident(Parser *p, Token tok) {
   (void)p;
   Ast *ident = ast_ident(tok.start, tok.length);
-  ident->line = tok.line;
+  ident->line_info = tok.line_info;
 
   return ident;
 }
@@ -206,21 +266,49 @@ Ast *parse_if(Parser *p, Token tok) {
   /*
    * if (cond) {
    *  body
-   * } [else] {
+   * } [else] [[if] (cond)] {
    *  else_body
    * }
    */
 
-  lex_expect_next(p->lexer, TOKEN_LPAREN);
+  if (!lex_expect_(p->lexer, TOKEN_LPAREN, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info, "expected '(' after if");
+  } else {
+    lex_next(p->lexer);
+  }
 
   Ast *cond = parse_expr(p);
 
-  lex_expect_next(p->lexer, TOKEN_RPAREN);
-  lex_expect_next(p->lexer, TOKEN_LCURLY);
+  if (!lex_expect_(p->lexer, TOKEN_RPAREN, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info, "expected ')'");
+  } else {
+    lex_next(p->lexer);
+  }
 
-  Ast *then = parse_block(p);
+  Ast *then;
 
-  lex_expect_next(p->lexer, TOKEN_RCURLY);
+  if (lex_peek(p->lexer).type == TOKEN_LCURLY) {
+    lex_next(p->lexer);
+    then = parse_block(p);
+
+    if (!lex_expect_(p->lexer, TOKEN_RCURLY, &tok_actual)) {
+      error(p->lexer->f, tok.line_info, "if block never closes");
+    } else {
+      lex_next(p->lexer);
+    }
+  } else {
+    if (lex_peek(p->lexer).type == TOKEN_NEWLINE) {
+      lex_next(p->lexer);
+    }
+    then = parse_expr(p);
+
+    expr_expect;
+  }
+
+  if (lex_peek(p->lexer).type == TOKEN_NEWLINE) {
+    lex_next(p->lexer);
+  }
+
   Token next_tok = lex_peek(p->lexer);
 
   Ast *els = NULL;
@@ -228,15 +316,30 @@ Ast *parse_if(Parser *p, Token tok) {
   if (next_tok.type == KW_ELSE) {
     lex_next(p->lexer);
 
-    lex_expect_next(p->lexer, TOKEN_LCURLY);
+    if (lex_peek(p->lexer).type == KW_IF) {
+      els = parse_if(p, lex_next(p->lexer));
+    } else {
+      if (lex_peek(p->lexer).type == TOKEN_LCURLY) {
+        lex_next(p->lexer);
+        els = parse_block(p);
+        if (!lex_expect_(p->lexer, TOKEN_RCURLY, &tok_actual)) {
+          error(p->lexer->f, tok.line_info, "else block never closes");
+        } else {
+          lex_next(p->lexer);
+        }
+      } else {
+        if (lex_peek(p->lexer).type == TOKEN_NEWLINE) {
+          lex_next(p->lexer);
+        }
+        els = parse_expr(p);
 
-    els = parse_block(p);
-
-    lex_expect_next(p->lexer, TOKEN_RCURLY);
+        expr_expect;
+      }
+    }
   }
 
   Ast *ast = ast_if(cond, then, els);
-  ast->line = tok.line;
+  ast->line_info = tok.line_info;
 
   return ast;
 }
@@ -248,19 +351,42 @@ Ast *parse_while(Parser *p, Token tok) {
    * }
    */
 
-  lex_expect_next(p->lexer, TOKEN_LPAREN);
+  if (!lex_expect_(p->lexer, TOKEN_LPAREN, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info, "expected '(' after while");
+  } else {
+    lex_next(p->lexer);
+  }
 
   Ast *cond = parse_expr(p);
 
-  lex_expect_next(p->lexer, TOKEN_RPAREN);
-  lex_expect_next(p->lexer, TOKEN_LCURLY);
+  if (!lex_expect_(p->lexer, TOKEN_RPAREN, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info, "expected ')'");
+  } else {
+    lex_next(p->lexer);
+  }
 
-  Ast *body = parse_block(p);
+  Ast *body;
 
-  lex_expect_next(p->lexer, TOKEN_RCURLY);
+  if (lex_peek(p->lexer).type == TOKEN_LCURLY) {
+    lex_next(p->lexer);
+    body = parse_block(p);
+
+    if (!lex_expect_(p->lexer, TOKEN_RCURLY, &tok_actual)) {
+      error(p->lexer->f, tok.line_info, "while block never closes");
+    } else {
+      lex_next(p->lexer);
+    }
+  } else {
+    if (lex_peek(p->lexer).type == TOKEN_NEWLINE) {
+      lex_next(p->lexer);
+    }
+    body = parse_expr(p);
+
+    expr_expect;
+  }
 
   Ast *ast = ast_while(cond, body);
-  ast->line = tok.line;
+  ast->line_info = tok.line_info;
 
   return ast;
 }
@@ -270,42 +396,79 @@ Ast *parse_for(Parser *p, Token tok) {
    * for (init; cond; step) {
    *  body
    * }
-   *
-   * NOTE: currently for_init only supports one declaration by using the
-   * parse_builtin_type function
-   *
-   * TODO: support multiple variable declarations in for_init
    */
 
-  int line = tok.line;
+  LineInfo line_info = tok.line_info;
 
-  lex_expect_next(p->lexer, TOKEN_LPAREN);
-  lex_expect_range(p->lexer, T_CHAR8, T_VOID); // expect it to be a type
-  tok = lex_next(p->lexer);
+  // TODO: change to a conditional when adding support for different forms of
+  // for loop (i.e. iterator based)
+  if (!lex_expect_(p->lexer, TOKEN_LPAREN, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info, "expected '(' after for");
+  } else {
+    lex_next(p->lexer);
+  }
 
-  Ast *init = parse_builtin_type(p, tok);
+  Ast *init = NULL, *cond = NULL, *step = NULL;
 
-  Ast *cond = parse_expr(p);
+  if (!lex_expect_range_(p->lexer, T_CHAR8, T_VOID, &tok_actual) &&
+      tok_actual.type != TOKEN_SEMICOLON) {
+    error(p->lexer->f, tok_actual.line_info,
+          "expected type declaration, got '%s'",
+          token_type_to_cstr(tok_actual.type));
+  } else if (lex_peek(p->lexer).type != TOKEN_SEMICOLON) {
+    tok = lex_next(p->lexer);
+    init = parse_builtin_type(p, tok);
+  }
 
-  lex_expect_next(p->lexer, TOKEN_SEMICOLON);
+  if (lex_peek(p->lexer).type != TOKEN_SEMICOLON) {
+    cond = parse_expr(p);
+    expr_expect;
+  } else {
+    lex_next(p->lexer);
+  }
 
-  Ast *step = parse_expr(p);
+  if (lex_peek(p->lexer).type != TOKEN_RPAREN) {
+    step = parse_expr(p);
+  }
 
-  lex_expect_next(p->lexer, TOKEN_RPAREN);
-  lex_expect_next(p->lexer, TOKEN_LCURLY);
+  if (!lex_expect_(p->lexer, TOKEN_RPAREN, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info, "expected ')'");
+  } else {
+    lex_next(p->lexer);
+  }
 
-  Ast *body = parse_block(p);
+  Ast *body;
 
-  lex_expect_next(p->lexer, TOKEN_RCURLY);
+  if (lex_peek(p->lexer).type == TOKEN_LCURLY) {
+    lex_next(p->lexer);
+    body = parse_block(p);
+
+    if (!lex_expect_(p->lexer, TOKEN_RCURLY, &tok_actual)) {
+      error(p->lexer->f, line_info, "for block never closes");
+    } else {
+      lex_next(p->lexer);
+    }
+  } else {
+    if (lex_peek(p->lexer).type == TOKEN_NEWLINE) {
+      lex_next(p->lexer);
+    }
+    body = parse_expr(p);
+
+    expr_expect;
+  }
 
   Ast *ast = ast_for(init, cond, step, body);
-  ast->line = line;
+  ast->line_info = line_info;
 
   return ast;
 }
 
 Ast *parse_switch(Parser *p, Token tok) {
-  lex_expect_next(p->lexer, TOKEN_LPAREN);
+  if (!lex_expect_(p->lexer, TOKEN_LPAREN, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info, "expected '(' after switch");
+  } else {
+    lex_next(p->lexer);
+  }
   (void)tok;
   return NULL;
 }
@@ -315,12 +478,12 @@ Ast *parse_return(Parser *p, Token tok) {
 
   if (lex_peek(p->lexer).type != TOKEN_SEMICOLON) {
     expr = parse_expr(p);
+
+    expr_expect;
   }
 
-  lex_expect_next(p->lexer, TOKEN_SEMICOLON);
-
   Ast *return_stmt = ast_return(expr);
-  return_stmt->line = tok.line;
+  return_stmt->line_info = tok.line_info;
 
   return return_stmt;
 }
@@ -337,10 +500,22 @@ Ast **parse_function_params(Parser *p, int *param_count) {
   Token next = lex_peek(p->lexer);
 
   while (next.type != TOKEN_RPAREN) {
-    lex_expect_range(p->lexer, T_CHAR8, T_VOID); // expect it to be a type
+    if (!lex_expect_range_(p->lexer, T_CHAR8, T_VOID, &tok_actual) &&
+        tok_actual.type != TOKEN_SEMICOLON) {
+      error(p->lexer->f, tok_actual.line_info,
+            "expected type declaration, got '%s'",
+            token_type_to_cstr(tok_actual.type));
+
+      vec_release(params);
+      return NULL;
+    }
     lex_next(p->lexer);
     vec_push(params, (void *)parse_param(p, next));
     next = lex_peek(p->lexer);
+
+    if (next.type == TOKEN_EOF) {
+      break;
+    }
   }
 
   *param_count = params->size;
@@ -354,7 +529,7 @@ Ast **parse_function_params(Parser *p, int *param_count) {
 }
 
 Ast *parse_param(Parser *p, Token tok) {
-  int param_line = tok.line;
+  LineInfo param_line_info = tok.line_info;
 
   int ptr_depth = 0;
   while (lex_peek(p->lexer).type == TOKEN_ASTERISK) {
@@ -362,15 +537,20 @@ Ast *parse_param(Parser *p, Token tok) {
     lex_next(p->lexer);
   }
 
-  ModCType *type = type_to_builtin(tok.type);
+  ModCType *type = tok_type_to_modctype(tok.type);
 
   if (ptr_depth > 0) {
     type = make_pointer_type(type, ptr_depth);
   }
 
-  tok = lex_peek(p->lexer);
+  if (!lex_expect_(p->lexer, TOKEN_IDENTIFIER, &tok_actual)) {
+    error(p->lexer->f, tok_actual.line_info,
+          "expected identifier for param, got '%s'",
+          token_type_to_cstr(tok_actual.type));
 
-  lex_expect(p->lexer, TOKEN_IDENTIFIER);
+    return NULL;
+  }
+
   tok = lex_next(p->lexer);
 
   const char *name = tok.start;
@@ -384,9 +564,9 @@ Ast *parse_param(Parser *p, Token tok) {
   }
 
   Ast *ast = ast_vardecl(name, len, type, init);
-  ast->line = param_line;
+  ast->line_info = param_line_info;
 
-  lex_expect_next(p->lexer, TOKEN_SEMICOLON);
+  expr_expect;
 
   return ast;
 }
@@ -432,6 +612,12 @@ Ast *parse_block(Parser *p) {
   Token next = lex_peek(p->lexer);
 
   while (next.type != TOKEN_EOF && next.type != TOKEN_RCURLY) {
+    if (next.type == TOKEN_NEWLINE) {
+      lex_next(p->lexer);
+      next = lex_peek(p->lexer);
+      continue;
+    }
+
     vec_push(statements, (void *)parse_token(p, next));
     next = lex_peek(p->lexer);
   }
@@ -456,19 +642,19 @@ Ast *parse_primary(Parser *p) {
     return parse_f64(t);
   case TOKEN_STRING: {
     Ast *str = ast_string(t.start, t.length);
-    str->line = t.line;
+    str->line_info = t.line_info;
 
     return str;
   }
   case KW_TRUE: {
     Ast *tru = ast_bool(true);
-    tru->line = t.line;
+    tru->line_info = t.line_info;
 
     return tru;
   }
   case KW_FALSE: {
     Ast *fals = ast_bool(false);
-    fals->line = t.line;
+    fals->line_info = t.line_info;
 
     return fals;
   }
@@ -476,12 +662,17 @@ Ast *parse_primary(Parser *p) {
     return parse_ident(p, t);
   case TOKEN_LPAREN: {
     Ast *expr = parse_expr(p);
-    lex_expect_next(p->lexer, TOKEN_RPAREN);
+    if (!lex_expect_next_(p->lexer, TOKEN_RPAREN, &tok_actual)) {
+      error(p->lexer->f, tok_actual.line_info, "expected ')', got '%s'",
+            token_type_to_cstr(tok_actual.type));
+
+      return NULL;
+    }
     return expr;
   }
   default:
-    error(t.line, "Unexpected token in expression: %s",
-          token_type_to_string(t.type));
+    error(p->lexer->f, t.line_info, "Unexpected token in expression: %s",
+          token_type_to_cstr(t.type));
     return NULL;
   }
 }
@@ -497,7 +688,7 @@ Ast *parse_prefix(Parser *p) {
     AstUnOp op = ast_toktype_to_unop(t.type);
     Ast *rhs = parse_prefix(p);
     Ast *unop = ast_unop(op, rhs);
-    unop->line = t.line;
+    unop->line_info = t.line_info;
 
     return unop;
   }
@@ -514,9 +705,15 @@ Ast *parse_postfix(Parser *p, Ast *left) {
       lex_next(p->lexer);
       int arg_count = 0;
       Ast **args = parse_function_args(p, &arg_count);
-      lex_expect_next(p->lexer, TOKEN_RPAREN);
+      if (!lex_expect_next_(p->lexer, TOKEN_RPAREN, &tok_actual)) {
+        error(p->lexer->f, tok_actual.line_info,
+              "expected ')' at the end of function call, got '%s'",
+              token_type_to_cstr(tok_actual.type));
+
+        return NULL;
+      }
       left = ast_funccall(left, args, arg_count);
-      left->line = t.line;
+      left->line_info = t.line_info;
 
       break;
     }
@@ -526,7 +723,7 @@ Ast *parse_postfix(Parser *p, Ast *left) {
       AstUnOp op =
           (t.type == TOKEN_PLUS_PLUS) ? AST_UNOP_POST_INC : AST_UNOP_POST_DEC;
       left = ast_unop(op, left);
-      left->line = t.line;
+      left->line_info = t.line_info;
 
       continue;
     }
@@ -644,10 +841,10 @@ Ast *parse_expr_bp(Parser *p, int min_bp) {
 
     int is_err = 0;
     left = ast_binop(op, left, right, &is_err);
-    left->line = t.line;
+    left->line_info = t.line_info;
 
     if (is_err) {
-      error(0, "Invalid binary operation in expression");
+      error(p->lexer->f, t.line_info, "Invalid binary operation in expression");
       return NULL;
     }
   }

@@ -35,8 +35,10 @@ static Ast *ast_alloc(void) {
 Ast *ast_create(void) {
   Ast *ast = ast_alloc();
 
-  if (!ast)
-    error(0, "arena alloc failed creating ast");
+  if (!ast) {
+    error(NULL, (LineInfo){0}, "arena alloc failed creating ast");
+    exit(1);
+  }
 
   memset(ast, 0, sizeof(Ast));
 
@@ -48,8 +50,10 @@ Ast *ast_create(void) {
 Ast **ast_create_array(int len) {
   Ast **ast_array = (Ast **)arena_alloc(&ast_arena, sizeof(Ast *) * len);
 
-  if (!ast_array)
-    error(0, "arena alloc failed creating ast array");
+  if (!ast_array) {
+    error(NULL, (LineInfo){0}, "arena alloc failed creating ast array");
+    exit(1);
+  }
 
   memset(ast_array, 0, sizeof(Ast *) * len);
 

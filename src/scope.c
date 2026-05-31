@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -79,16 +80,20 @@ static Scope *scope_alloc(void) {
   return (Scope *)arena_alloc(&scope_arena, sizeof(Scope));
 }
 
-Scope *scope_create(void) {
+Scope *scope_create(Scope *parent, String *name) {
   Scope *scope = scope_alloc();
 
-  if (!scope)
-    error(0, "arena alloc failed creating scope");
+  if (!scope) {
+    error(NULL, (LineInfo){0}, "arena alloc failed creating scope");
+    exit(1);
+  }
 
   memset(scope, 0, sizeof(Scope));
 
-  scope->name = NULL;
-  scope->parent = NULL;
+  scope->name = name;
+  scope->parent = parent;
+  if (parent != NULL)
+    scope->f = parent->f;
   scope->children = vec_new(&vec_scope_type);
   scope->symbols = hashmap_new(&map_str_symbol_type);
 
@@ -99,18 +104,20 @@ static Symbol *symbol_alloc(void) {
   return (Symbol *)arena_alloc(&scope_arena, sizeof(Symbol));
 }
 
-Symbol *symbol_create(void) {
+Symbol *symbol_create(Scope *scope, String *name, ModCType *type, Ast *decl) {
   Symbol *symbol = symbol_alloc();
 
-  if (!symbol)
-    error(0, "arena alloc failed creating symbol");
+  if (!symbol) {
+    error(NULL, (LineInfo){0}, "arena alloc failed creating symbol");
+    exit(1);
+  }
 
   memset(symbol, 0, sizeof(Symbol));
 
-  symbol->name = NULL;
-  symbol->type = NULL;
-  symbol->scope = NULL;
-  symbol->decl = NULL;
+  symbol->name = name;
+  symbol->type = type;
+  symbol->scope = scope;
+  symbol->decl = decl;
 
   return symbol;
 }
@@ -125,22 +132,23 @@ Symbol *find_symbol(Scope *current_scope, String *symbol) {
   return find_symbol(current_scope->parent, symbol);
 }
 
-Scope *make_global_scope(void) {
-  Scope *scope = scope_create();
+Scope *make_global_scope(File *f) {
+  String *name = str_dup_raw("global", 6);
+  Scope *scope = scope_create(NULL, name);
 
   scope->variant = SCOPE_GLOBAL;
-  scope->name = str_dup_raw("global", 6);
+  scope->f = f;
 
   return scope;
 }
 
 Scope *make_block_scope(Scope *current_scope) {
-  Scope *new_scope = scope_create();
-  new_scope->parent = current_scope;
-  new_scope->variant = SCOPE_BLOCK;
-  new_scope->name = str_new();
-  str_catprintf(new_scope->name, "%.*s_%d", STR_FMT_UNWRAP(current_scope->name),
+  String *name = str_new();
+  str_catprintf(name, "%.*s_%d", STR_FMT_UNWRAP(current_scope->name),
                 current_scope->children->size);
+
+  Scope *new_scope = scope_create(current_scope, name);
+  new_scope->variant = SCOPE_BLOCK;
   vec_push(current_scope->children, new_scope);
 
   return new_scope;
@@ -159,27 +167,22 @@ void populate_scopes(Ast *ast, Scope *current_scope) {
   } break;
   case AST_FUNC: {
     if (hashmap_has(current_scope->symbols, ast->func_decl.name)) {
-      error(ast->line,
+      error(current_scope->f, ast->line_info,
             "Cannot redeclare function %.*s() on line %d, function has already "
             "been declared on line %d",
-            STR_FMT_UNWRAP(ast->func_decl.name),
+            STR_FMT_UNWRAP(ast->func_decl.name), ast->line_info.line,
             ((Symbol *)hashmap_get(current_scope->symbols, ast->func_decl.name))
-                ->decl->line);
+                ->decl->line_info.line);
       return;
     }
 
-    Symbol *func_symbol = symbol_create();
-    func_symbol->name = ast->func_decl.name;
+    Symbol *func_symbol = symbol_create(current_scope, ast->func_decl.name,
+                                        ast->func_decl.func_type, ast);
     func_symbol->variant = SYMBOL_FUNCTION;
-    func_symbol->scope = current_scope;
-    func_symbol->type = ast->func_decl.func_type;
-    func_symbol->decl = ast;
     hashmap_add(current_scope->symbols, func_symbol->name, func_symbol);
 
-    Scope *func_scope = scope_create();
-    func_scope->parent = current_scope;
+    Scope *func_scope = scope_create(current_scope, ast->func_decl.name);
     func_scope->variant = SCOPE_FUNCTION;
-    func_scope->name = ast->func_decl.name;
     vec_push(current_scope->children, func_scope);
 
     for (size_t i = 0; i < ast->func_decl.param_count; i++) {
@@ -192,21 +195,18 @@ void populate_scopes(Ast *ast, Scope *current_scope) {
   } break;
   case AST_VAR: {
     if (hashmap_has(current_scope->symbols, ast->var_decl.name)) {
-      error(ast->line,
+      error(current_scope->f, ast->line_info,
             "Cannot redeclare variable %.*s on line %d, variable has already "
             "been declared in the same scope on line %d",
-            STR_FMT_UNWRAP(ast->var_decl.name),
+            STR_FMT_UNWRAP(ast->var_decl.name), ast->line_info.line,
             ((Symbol *)hashmap_get(current_scope->symbols, ast->var_decl.name))
-                ->decl->line);
+                ->decl->line_info.line);
       return;
     }
 
-    Symbol *var_symbol = symbol_create();
-    var_symbol->name = ast->var_decl.name;
+    Symbol *var_symbol = symbol_create(current_scope, ast->var_decl.name,
+                                       ast->var_decl.type, ast);
     var_symbol->variant = SYMBOL_VARIABLE;
-    var_symbol->scope = current_scope;
-    var_symbol->type = ast->var_decl.type;
-    var_symbol->decl = ast;
     hashmap_add(current_scope->symbols, var_symbol->name, var_symbol);
   } break;
   case AST_IF: {

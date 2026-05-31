@@ -4,10 +4,24 @@
 #include <stddef.h>
 #include <stdint.h>
 
-void error(size_t line, const char *fmt, ...);
-void warning(size_t line, const char *fmt, ...);
-void info(size_t line, const char *fmt, ...);
+typedef struct File File;
+typedef struct LineInfo LineInfo;
+
+void error(File *f, LineInfo li, const char *fmt, ...);
+void warning(File *f, LineInfo li, const char *fmt, ...);
+void info(File *f, LineInfo li, const char *fmt, ...);
 void check_errors(void);
-char *readin(char *file);
+File readin(const char *file);
+
+struct File {
+  const char *filename;
+  const char *src;
+};
+
+struct LineInfo {
+  const char *line_offset;
+  size_t line;
+  size_t column;
+};
 
 #endif // !UTILS_H

@@ -5,6 +5,7 @@
 
 #include "ast.h"
 #include "lexer.h"
+#include "utils.h"
 
 typedef struct Parser Parser;
 
@@ -16,7 +17,7 @@ struct Parser {
 Parser *parser_create(Lexer *l);
 void parser_free(Parser *p);
 
-void parse(Parser *p, const char *src);
+void parse(Parser *p, File *f);
 Ast *parse_token(Parser *p, Token t);
 
 Ast *parse_i64(Token t);

@@ -5,25 +5,24 @@ float_16 main(int_8 i; float_16 y = 100.0;) {
 
   x = x + 50;
 
-  if (x > 10) {
+  if (x > 10)
     x -= 5;
-  } else {
+  else if (x == 5)
     x *= 1;
-  }
+  else
+    x += 2;
 
-  while (x < 100) {
+  while (x < 100)
     x++;
-  }
 
-  for (int_8 i = 1; i < x; ++i) {
+  for (int_8 i = 1; i < x; ++i)
     x -= 1;
-  }
 
-  x += sum(i, y = 1.0);
+  x += sum(sum(1, 2), y = 10);
 
   return x;
 }
 
-float_16 sum(int_8 x; float_16 y = 1.0;) {
+int_8 sum(int_8 x; int_8 y = 1;) {
   return x + y;
 }

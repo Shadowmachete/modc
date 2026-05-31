@@ -9,10 +9,11 @@
 #include "types.h"
 #include "utils.h"
 
-void lex_init(Lexer *l, const char *src) {
+void lex_init(Lexer *l, File *f) {
   l->pos = 0;
+  l->line_offset = f->src;
   l->line = 1;
-  l->src = src;
+  l->f = f;
   l->has_peeked = 0;
 }
 
@@ -25,17 +26,28 @@ Token lex_next(Lexer *l) {
   char *c;
 
 again:
-  c = (char *)l->src + l->pos;
-  while (*c == ' ' || *c == '\t' || *c == '\n') {
-    if (*c == '\n')
-      l->line++;
+  c = (char *)l->f->src + l->pos;
+  while (*c == ' ' || *c == '\t') {
     c++;
   }
 
   const char *start = c;
 
   if (*c == '\0')
-    return (Token){start, 0, l->line, TOKEN_EOF};
+    return (Token){start, 0,
+                   (LineInfo){l->line_offset, l->line, c - l->line_offset},
+                   TOKEN_EOF};
+
+  if (*c == '\n') {
+    Token tok = (Token){start, 1,
+                        (LineInfo){l->line_offset, l->line, c - l->line_offset},
+                        TOKEN_NEWLINE};
+    l->line++;
+    l->line_offset = ++c;
+    l->pos = c - l->f->src;
+
+    return tok;
+  }
 
   if (isdigit((unsigned char)*c))
     return lex_number(l, c, start);
@@ -224,9 +236,9 @@ again:
 
   tok.start = start;
   tok.length = len;
-  tok.line = l->line;
+  tok.line_info = (LineInfo){l->line_offset, l->line, start - l->line_offset};
 
-  l->pos = c - l->src;
+  l->pos = c - l->f->src;
 
   return tok;
 }
@@ -239,40 +251,43 @@ Token lex_peek(Lexer *l) {
   return l->peeked;
 }
 
-void lex_expect(Lexer *l, TokenType tok_type) {
+b8 lex_expect_(Lexer *l, TokenType tok_type, Token *tok_actual) {
   // expect the next token without advancing
-  Token next_tok = lex_peek(l);
-  if (next_tok.type == tok_type)
-    return;
+  *tok_actual = lex_peek(l);
+  if ((*tok_actual).type == tok_type)
+    return 1;
 
-  error(next_tok.line, "Expected '%s' but got '%s' instead",
-        token_type_to_string(tok_type), token_type_to_string(next_tok.type));
+  return 0;
 }
 
-void lex_expect_range(Lexer *l, TokenType start, TokenType end) {
+b8 lex_expect_range_(Lexer *l, TokenType start, TokenType end,
+                     Token *tok_actual) {
   // expect the next token to be in an ordered range of types
-  Token next_tok = lex_peek(l);
-  if (next_tok.type >= start && next_tok.type <= end)
-    return;
+  *tok_actual = lex_peek(l);
+  if ((*tok_actual).type >= start && (*tok_actual).type <= end)
+    return 1;
 
-  error(next_tok.line, "Expected '%s' to '%s' but got '%s' instead",
-        token_type_to_string(start), token_type_to_string(end),
-        token_type_to_string(next_tok.type));
+  return 0;
 }
 
-void lex_expect_next(Lexer *l, TokenType tok_type) {
+b8 lex_expect_next_(Lexer *l, TokenType tok_type, Token *tok_actual) {
   // expect the next token and consume it
-  lex_expect(l, tok_type);
+  b8 val = lex_expect_(l, tok_type, tok_actual);
   lex_next(l);
+
+  return val;
 }
 
 Token lex_number(Lexer *l, char *c, const char *start) {
   b8 is_float = false;
 
+  LineInfo line_info =
+      (LineInfo){l->line_offset, l->line, start - l->line_offset};
+
   while (isdigit(*c) || *c == '.') {
     if (*c++ == '.') {
       if (is_float == true) {
-        error(l->line, "float cannot have multiple decimal points.");
+        error(l->f, line_info, "float cannot have multiple decimal points.");
       } else {
         is_float = true;
       }
@@ -280,11 +295,11 @@ Token lex_number(Lexer *l, char *c, const char *start) {
   }
 
   size_t len = c - start;
-  l->pos = c - l->src;
+  l->pos = c - l->f->src;
   if (is_float)
-    return (Token){start, len, l->line, TOKEN_FLOAT};
+    return (Token){start, len, line_info, TOKEN_FLOAT};
 
-  return (Token){start, len, l->line, TOKEN_NUMBER};
+  return (Token){start, len, line_info, TOKEN_NUMBER};
 }
 
 Token lex_string(Lexer *l, char *c, const char *start) {
@@ -296,22 +311,25 @@ Token lex_string(Lexer *l, char *c, const char *start) {
     c++;
   }
 
+  LineInfo line_info =
+      (LineInfo){l->line_offset, l->line, start - l->line_offset};
+
   if (*c == '\0') {
-    error(l->line, "String literal is never terminated");
+    error(l->f, line_info, "String literal is never terminated");
     exit(1);
   }
 
   size_t len = c - start - 1;
   c++;
-  l->pos = c - l->src;
-  return (Token){start + 1, len, l->line, TOKEN_STRING};
+  l->pos = c - l->f->src;
+  return (Token){start + 1, len, line_info, TOKEN_STRING};
 }
 
 void lex_comment(Lexer *l, char *c) {
   c += 2;
   while (*c && *c != '\n')
     c++;
-  l->pos = c - l->src;
+  l->pos = c - l->f->src;
 }
 
 Token lex_ident(Lexer *l, char *c, const char *start) {
@@ -383,15 +401,15 @@ Token lex_ident(Lexer *l, char *c, const char *start) {
 
 #undef MATCH
 
-  l->pos = c - l->src;
+  l->pos = c - l->f->src;
 
   tok.start = start;
   tok.length = len;
-  tok.line = l->line;
+  tok.line_info = (LineInfo){l->line_offset, l->line, start - l->line_offset};
   return tok;
 }
 
-const char *token_type_to_string(TokenType t) {
+const char *token_type_to_cstr(TokenType t) {
   switch (t) {
   case T_CHAR8:
     return "CHAR8";
@@ -554,6 +572,8 @@ const char *token_type_to_string(TokenType t) {
 
   case TOKEN_EOF:
     return "EOF";
+  case TOKEN_NEWLINE:
+    return "\\n";
   case TOKEN_UNKNOWN:
   default:
     return "UNKNOWN";
@@ -561,6 +581,7 @@ const char *token_type_to_string(TokenType t) {
 }
 
 void token_print(Token t) {
-  printf("Token: [line %zu] %-10s '%.*s' %zu\n", t.line,
-         token_type_to_string(t.type), (int)t.length, t.start, t.length);
+  printf("Token: [line %zu:%zu] %-10s '%.*s' %zu\n", t.line_info.line,
+         t.line_info.column, token_type_to_cstr(t.type), (int)t.length, t.start,
+         t.length);
 }

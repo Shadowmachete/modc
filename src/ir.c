@@ -8,6 +8,7 @@
 #include "arena.h"
 #include "ast.h"
 #include "ir.h"
+#include "lexer.h"
 #include "modc_types.h"
 #include "str.h"
 #include "utils.h"
@@ -36,12 +37,27 @@ IrInstr *ir_create_instr_array(size_t len) {
   return (IrInstr *)arena_alloc(&ir_arena, sizeof(IrInstr) * len);
 }
 
-IrGlobalVar *ir_create_global_array(size_t len) {
-  IrGlobalVar *globals =
-      (IrGlobalVar *)arena_alloc(&ir_arena, sizeof(IrGlobalVar) * len);
+IrGlobalVar *ir_global_create(void) {
+  IrGlobalVar *global =
+      (IrGlobalVar *)arena_alloc(&ir_arena, sizeof(IrGlobalVar));
+
+  if (!global) {
+    error(NULL, (LineInfo){0}, "arena alloc failed creating ir globalvar");
+    exit(1);
+  }
+
+  memset(global, 0, sizeof(IrGlobalVar));
+
+  return global;
+}
+
+IrGlobalVar **ir_create_global_array(size_t len) {
+  IrGlobalVar **globals =
+      (IrGlobalVar **)arena_alloc(&ir_arena, sizeof(IrGlobalVar *) * len);
 
   if (!globals) {
-    error(0, "arena alloc failed creating ir global array of length %zu", len);
+    error(NULL, (LineInfo){0},
+          "arena alloc failed creating ir global array of length %zu", len);
     exit(1);
   }
 
@@ -54,7 +70,7 @@ IrFunc *ir_func_create(void) {
   IrFunc *func = (IrFunc *)arena_alloc(&ir_arena, sizeof(IrFunc));
 
   if (!func) {
-    error(0, "arena alloc failed creating ir func");
+    error(NULL, (LineInfo){0}, "arena alloc failed creating ir func");
     exit(1);
   }
 
@@ -67,7 +83,8 @@ IrFunc **ir_create_func_array(size_t len) {
   IrFunc **funcs = (IrFunc **)arena_alloc(&ir_arena, sizeof(IrFunc *) * len);
 
   if (!funcs) {
-    error(0, "arena alloc failed creating ir func array of length %zu", len);
+    error(NULL, (LineInfo){0},
+          "arena alloc failed creating ir func array of length %zu", len);
     exit(1);
   }
 
@@ -80,7 +97,7 @@ IrProgram *ir_program_create(void) {
   IrProgram *program = (IrProgram *)arena_alloc(&ir_arena, sizeof(IrProgram));
 
   if (!program) {
-    error(0, "arena alloc failed creating ir program");
+    error(NULL, (LineInfo){0}, "arena alloc failed creating ir program");
     exit(1);
   }
 
@@ -115,7 +132,7 @@ IrCtx *ir_ctx_create(void) {
   IrCtx *ctx = (IrCtx *)arena_alloc(&ir_arena, sizeof(IrCtx));
 
   if (!ctx) {
-    error(0, "arena alloc failed creating ir ctx");
+    error(NULL, (LineInfo){0}, "arena alloc failed creating ir ctx");
     exit(1);
   }
 
@@ -393,52 +410,39 @@ IrOperand ir_gen_unop(IrCtx *ctx, Ast *ast) {
   switch (ast->unary.unop) {
   case AST_UNOP_POST_INC: {
     IrOperand temp = ir_temp(ir_next_temp(ctx), ast->type);
-    IrOperand temp_2 = ir_temp(ir_next_temp(ctx), ast->type);
     ir_emit(ctx, ir_instr_copy(temp, expr));
-    ir_emit(ctx, ir_instr_copy(temp_2, expr));
     ir_emit(ctx,
-            ir_instr_binop(IR_ADD, temp_2, temp_2, ir_const_int(1, ast->type)));
-    ir_emit(ctx, ir_instr_copy(expr, temp_2));
+            ir_instr_binop(IR_ADD, expr, expr, ir_const_int(1, ast->type)));
 
     return temp;
   } break;
   case AST_UNOP_POST_DEC: {
     IrOperand temp = ir_temp(ir_next_temp(ctx), ast->type);
-    IrOperand temp_2 = ir_temp(ir_next_temp(ctx), ast->type);
     ir_emit(ctx, ir_instr_copy(temp, expr));
-    ir_emit(ctx, ir_instr_copy(temp_2, expr));
     ir_emit(ctx,
-            ir_instr_binop(IR_SUB, temp_2, temp_2, ir_const_int(1, ast->type)));
-    ir_emit(ctx, ir_instr_copy(expr, temp_2));
+            ir_instr_binop(IR_SUB, expr, expr, ir_const_int(1, ast->type)));
 
     return temp;
   } break;
   case AST_UNOP_PRE_INC: {
-    IrOperand temp = ir_temp(ir_next_temp(ctx), ast->type);
-    ir_emit(ctx, ir_instr_copy(temp, expr));
     ir_emit(ctx,
-            ir_instr_binop(IR_ADD, temp, temp, ir_const_int(1, ast->type)));
-    ir_emit(ctx, ir_instr_copy(expr, temp));
+            ir_instr_binop(IR_ADD, expr, expr, ir_const_int(1, ast->type)));
 
-    return temp;
+    return expr;
   } break;
   case AST_UNOP_PRE_DEC: {
-    IrOperand temp = ir_temp(ir_next_temp(ctx), ast->type);
-    ir_emit(ctx, ir_instr_copy(temp, expr));
     ir_emit(ctx,
-            ir_instr_binop(IR_SUB, temp, temp, ir_const_int(1, ast->type)));
-    ir_emit(ctx, ir_instr_copy(expr, temp));
+            ir_instr_binop(IR_SUB, expr, expr, ir_const_int(1, ast->type)));
 
-    return temp;
+    return expr;
   } break;
   case AST_UNOP_PLUS: {
     return expr;
   } break;
   case AST_UNOP_MINUS: {
-    IrOperand temp = ir_temp(ir_next_temp(ctx), ast->type);
-    ir_emit(ctx, ir_instr_unop(IR_NEG, temp, expr));
+    ir_emit(ctx, ir_instr_unop(IR_NEG, expr, expr));
 
-    return temp;
+    return expr;
   } break;
   case AST_UNOP_LOG_NOT: {
     IrOperand temp = ir_temp(ir_next_temp(ctx), ast->type);
@@ -471,30 +475,31 @@ IrOperand ir_gen_unop(IrCtx *ctx, Ast *ast) {
 
 IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
   IrOperand left;
-  IrOperand var;
 
   b8 left_is_unop_deref = ast->binary.left->variant == AST_UNOP &&
                           ast->binary.left->unary.unop == AST_UNOP_DEREF;
 
   if (left_is_unop_deref && binop_is_assignment(ast->binary.binop)) {
-    // TODO: verify correctness when pointer support is added
+    // WARNING: verify correctness when pointer support is added
     assert(0 && "pointers are not supported yet");
   } else {
     left = ir_gen_expr(ctx, ast->binary.left);
   }
   IrOperand right = ir_gen_expr(ctx, ast->binary.right);
 
-  if (left.variant == IR_OP_VAR && ast->binary.binop != AST_BIN_OP_ASSIGN) {
-    var = left;
-    left = ir_temp(ir_next_temp(ctx), var.type);
-    ir_emit(ctx, ir_instr_copy(left, var));
-  }
-
-  if (right.variant == IR_OP_VAR) {
-    IrOperand tmp_ = right;
-    right = ir_temp(ir_next_temp(ctx), tmp_.type);
-    ir_emit(ctx, ir_instr_copy(right, tmp_));
-  }
+  /* if (left.variant == IR_OP_VAR && ast->binary.binop != AST_BIN_OP_ASSIGN) {
+   */
+  /*   var = left; */
+  /*   left = ir_temp(ir_next_temp(ctx), var.type); */
+  /*   ir_emit(ctx, ir_instr_copy(left, var)); */
+  /* } */
+  /**/
+  /* if (right.variant == IR_OP_VAR) { */
+  /*   IrOperand tmp_ = right; */
+  /*   right = ir_temp(ir_next_temp(ctx), tmp_.type); */
+  /*   ir_emit(ctx, ir_instr_copy(right, tmp_)); */
+  /* } */
+  /**/
 
   if (ir_op_is_const(left) && !ir_op_is_const(right)) {
     IrOperand tmp_ = right;
@@ -665,8 +670,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_ADD, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_SUB_ASSIGN: {
@@ -677,8 +681,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_SUB, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_MUL_ASSIGN: {
@@ -689,8 +692,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_MUL, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_DIV_ASSIGN: {
@@ -701,8 +703,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_DIV, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_MOD_ASSIGN: {
@@ -713,8 +714,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_MOD, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_SHL_ASSIGN: {
@@ -725,8 +725,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_SHL, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_SHR_ASSIGN: {
@@ -737,8 +736,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_SHR, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_AND_ASSIGN: {
@@ -749,8 +747,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_BIT_AND, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_XOR_ASSIGN: {
@@ -761,8 +758,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_BIT_XOR, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   case AST_BIN_OP_OR_ASSIGN: {
@@ -773,8 +769,7 @@ IrOperand ir_gen_binop(IrCtx *ctx, Ast *ast) {
       return left;
     } else {
       ir_emit(ctx, ir_instr_binop(IR_BIT_OR, left, left, right));
-      ir_emit(ctx, ir_instr_copy(var, left));
-      return var;
+      return left;
     }
   } break;
   }
@@ -871,7 +866,20 @@ void ir_gen_block(IrCtx *ctx, Ast *ast) {
 
 void ir_gen_var_decl(IrCtx *ctx, Ast *ast) {
   if (ast->var_decl.is_global) {
-    // TODO: populate into the globals struct of the program
+    IrGlobalVar *new_global = ir_global_create();
+
+    if (ast->var_decl.initializer == NULL) {
+      new_global->initializer = (IrOperand){0};
+      new_global->is_zero_init = 1;
+    } else {
+      new_global->initializer = ir_gen_expr(ctx, ast->var_decl.initializer);
+      new_global->is_zero_init = 0;
+    }
+
+    new_global->type = ast->var_decl.type;
+    new_global->name = ast->var_decl.name;
+
+    vec_push(ctx->globals_vec, new_global);
     return;
   }
 
@@ -910,14 +918,22 @@ void ir_gen_if(IrCtx *ctx, Ast *ast) {
 
   ir_emit(ctx, ir_instr_label(l_true));
 
-  ir_gen_block(ctx, ast->if_stmt.then);
+  if (ast->if_stmt.then->variant == AST_BLOCK)
+    ir_gen_block(ctx, ast->if_stmt.then);
+  else
+    ir_gen_expr(ctx, ast->if_stmt.then);
 
   if (has_els) {
     ir_emit(ctx, ir_instr_jump(l_end));
 
     ir_emit(ctx, ir_instr_label(l_false));
 
-    ir_gen_block(ctx, ast->if_stmt.els);
+    if (ast->if_stmt.els->variant == AST_BLOCK)
+      ir_gen_block(ctx, ast->if_stmt.els);
+    else if (ast->if_stmt.els->variant == AST_IF)
+      ir_gen_if(ctx, ast->if_stmt.els);
+    else
+      ir_gen_expr(ctx, ast->if_stmt.els);
   }
 
   ir_emit(ctx, ir_instr_label(l_end));
@@ -956,7 +972,10 @@ void ir_gen_for(IrCtx *ctx, Ast *ast) {
 
   ir_emit(ctx, ir_instr_label(l_body));
 
-  ir_gen_block(ctx, ast->for_stmt.forbody);
+  if (ast->for_stmt.forbody->variant == AST_BLOCK)
+    ir_gen_block(ctx, ast->for_stmt.forbody);
+  else
+    ir_gen_expr(ctx, ast->for_stmt.forbody);
 
   ir_gen_stmt(ctx, ast->for_stmt.forstep);
 
@@ -994,7 +1013,10 @@ void ir_gen_while(IrCtx *ctx, Ast *ast) {
 
   ir_emit(ctx, ir_instr_label(l_body));
 
-  ir_gen_block(ctx, ast->while_stmt.whilebody);
+  if (ast->while_stmt.whilebody->variant == AST_BLOCK)
+    ir_gen_block(ctx, ast->while_stmt.whilebody);
+  else
+    ir_gen_expr(ctx, ast->while_stmt.whilebody);
 
   ir_emit(ctx, ir_instr_jump(l_cond));
 
@@ -1010,7 +1032,8 @@ void ir_gen_return(IrCtx *ctx, Ast *ast) {
 
 void ir_gen_break(IrCtx *ctx, Ast *ast) {
   if (ctx->break_label == -1) {
-    error(ast->line, "uncaught error: break called otside of loop.");
+    error(ctx->f, ast->line_info,
+          "uncaught error: break called otside of loop.");
     check_errors();
   }
 
@@ -1019,7 +1042,8 @@ void ir_gen_break(IrCtx *ctx, Ast *ast) {
 
 void ir_gen_continue(IrCtx *ctx, Ast *ast) {
   if (ctx->continue_label == -1) {
-    error(ast->line, "uncaught error: continue called otside of loop.");
+    error(ctx->f, ast->line_info,
+          "uncaught error: continue called otside of loop.");
     check_errors();
   }
 
@@ -1043,14 +1067,16 @@ IrFunc *ir_gen_func_decl(IrCtx *ctx, Ast *ast) {
   ctx->current_func = func;
 
   // TODO: generate function prologue
-  warning(ast->line, "Function prologue has not been developed yet. The IR "
-                     "generated is not proper");
+  warning(ctx->f, ast->line_info,
+          "Function prologue has not been developed yet. The IR "
+          "generated is not proper");
 
   ir_gen_block(ctx, ast->func_decl.body);
 
   // TODO: generate function epilogue
-  warning(ast->line, "Function epilogue has not been developed yet. The IR "
-                     "generated is not proper");
+  warning(ctx->f, ast->line_info,
+          "Function epilogue has not been developed yet. The IR "
+          "generated is not proper");
 
   func->instr_count = ctx->instr_buf.size;
   func->instrs = ir_create_instr_array(func->instr_count);
@@ -1104,7 +1130,7 @@ void ir_operand_display(IrOperand operand) {
     printf("%.*s", STR_FMT_UNWRAP(operand.var_name));
   } break;
   case IR_OP_TEMP: {
-    printf("t%d", operand.temp_id);
+    printf("_t%d", operand.temp_id);
   } break;
   case IR_OP_LABEL: {
     printf("L%d", operand.label_id);
@@ -1356,10 +1382,10 @@ void ir_instr_display(IrInstr instr) {
 
 void ir_display(IrProgram *prog) {
   for (size_t i = 0; i < prog->global_count; i++) {
-    IrGlobalVar global = prog->globals[i];
-    printf("%.*s %.*s", STR_FMT_UNWRAP(modctype_to_string(global.type)),
-           STR_FMT_UNWRAP(global.name));
-    ir_operand_display(global.initializer);
+    IrGlobalVar *global = prog->globals[i];
+    printf("%.*s %.*s = ", STR_FMT_UNWRAP(modctype_to_string(global->type)),
+           STR_FMT_UNWRAP(global->name));
+    ir_operand_display(global->initializer);
     printf("\n");
   }
 
